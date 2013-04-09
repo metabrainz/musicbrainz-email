@@ -7,11 +7,13 @@ import Prelude hiding (catch)
 
 --------------------------------------------------------------------------------
 import Control.Applicative
-import Control.Exception (SomeException, catch)
+import Control.Exception (SomeException, catch, evaluate)
 import Control.Monad (forever, join, void)
 import Control.Monad.Trans.Either (runEitherT)
 import Data.Data
 import Data.Functor.Identity (Identity, runIdentity)
+import Control.Concurrent.MVar (newMVar, readMVar, withMVar)
+import Control.Concurrent (threadDelay)
 
 
 --------------------------------------------------------------------------------
@@ -20,6 +22,7 @@ import qualified Data.Aeson.Generic as Aeson
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as LBS
 import qualified Data.Text as Text
+import qualified Data.Time as Time
 import qualified Data.Text.Encoding as Text
 import qualified Heist as Heist
 import qualified Heist.Interpreted as Heist
@@ -27,6 +30,7 @@ import qualified Network.AMQP as AMQP
 import qualified Network.Mail.Mime as Mail
 import qualified Text.XmlHtml as XmlHtml
 
+import qualified Data.Time as Time
 
 --------------------------------------------------------------------------------
 import MusicBrainz.Email
@@ -98,6 +102,9 @@ emailConsumer rabbitMqConn = do
       templateRepo <- Heist.loadTemplates "templates"
       Heist.initHeist (Heist.HeistConfig [] [] [] [] templateRepo)
 
+  lastTime <- Time.getCurrentTime >>= newMVar
+  let updateLastSent = void $ withMVar lastTime (const $ evaluate <$> Time.getCurrentTime)
+
   return $ \msg env -> do
     case Aeson.decode (AMQP.msgBody msg) of
       -- JSON decoding failed
@@ -110,8 +117,14 @@ emailConsumer rabbitMqConn = do
           Nothing ->
             AMQP.publishMsg rabbitMq failureExchange invalidKey msg
 
-          Just mail ->
-            Mail.renderSendMail mail `catch`
+          Just mail -> do
+            now <- Time.getCurrentTime
+            lastSentAt <- readMVar lastTime
+
+            threadDelay $ floor $
+              (max 0 (maxRate - (now `Time.diffUTCTime` lastSentAt))) * 1000000
+
+            (Mail.renderSendMail mail >> updateLastSent) `catch`
               (\e -> let errorString = Text.pack $ show (e :: SomeException)
                      in AMQP.publishMsg rabbitMq failureExchange unroutableKey
                           AMQP.newMsg
@@ -126,6 +139,8 @@ emailConsumer rabbitMqConn = do
   failureExchange = "failure"
   invalidKey = "invalid"
   unroutableKey = "unroutable"
+
+  maxRate = 0.12342
 
 
 --------------------------------------------------------------------------------

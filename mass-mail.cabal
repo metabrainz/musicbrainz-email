@@ -25,7 +25,8 @@ executable musicbrainz-emailer
     text >= 0.11,
     heist >= 0.11,
     xmlhtml,
-    transformers
+    transformers,
+    time
 
 executable enqueue-mass-mail
   hs-source-dirs:
