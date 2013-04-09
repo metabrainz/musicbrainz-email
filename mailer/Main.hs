@@ -15,10 +15,12 @@ import Data.Functor.Identity (Identity, runIdentity)
 import Control.Concurrent.MVar (newMVar, readMVar, withMVar)
 import Control.Concurrent (threadDelay)
 
+import Data.Aeson ((.=))
 
 --------------------------------------------------------------------------------
 import qualified Blaze.ByteString.Builder as Builder
-import qualified Data.Aeson.Generic as Aeson
+import qualified Data.Aeson as Aeson
+import qualified Data.Aeson.Generic as GAeson
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as LBS
 import qualified Data.Text as Text
@@ -106,7 +108,7 @@ emailConsumer rabbitMqConn = do
   let updateLastSent = void $ withMVar lastTime (const $ evaluate <$> Time.getCurrentTime)
 
   return $ \msg env -> do
-    case Aeson.decode (AMQP.msgBody msg) of
+    case GAeson.decode (AMQP.msgBody msg) of
       -- JSON decoding failed
       Nothing ->
         AMQP.publishMsg rabbitMq failureExchange invalidKey msg
@@ -125,12 +127,13 @@ emailConsumer rabbitMqConn = do
               (max 0 (maxRate - (now `Time.diffUTCTime` lastSentAt))) * 1000000
 
             (Mail.renderSendMail mail >> updateLastSent) `catch`
-              (\e -> let errorString = Text.pack $ show (e :: SomeException)
-                     in AMQP.publishMsg rabbitMq failureExchange unroutableKey
-                          AMQP.newMsg
-                            { AMQP.msgBody =
-                                LBS.fromChunks [ Text.encodeUtf8 errorString ]
-                            })
+              (\e -> AMQP.publishMsg rabbitMq failureExchange unroutableKey
+                       AMQP.newMsg
+                         { AMQP.msgBody = Aeson.encode $ Aeson.object
+                             [ "email" .= GAeson.encode email
+                             , "error" .= Text.pack (show (e :: SomeException))
+                             ]
+                         })
 
     AMQP.ackEnv env
 
