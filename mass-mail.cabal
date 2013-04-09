@@ -1,0 +1,19 @@
+name: mass-mail
+version: 0.1.0.0
+synopsis: Send an email to all MusicBrainz editors
+homepage: http://github.com/metabrainz/mass-mail
+license: GPL-3
+license-file: LICENSE
+author: Oliver Charles
+maintainer: ollie@ocharles.org.uk
+build-type: Simple
+cabal-version: >=1.8
+
+executable mass-mail
+  hs-source-dirs: src
+  main-is: Main.hs
+  build-depends:
+    base ==4.5.*,
+    aeson >= 0.6.1.0,
+    mime-mail >= 0.4.1.2,
+    amqp >= 0.3.3
