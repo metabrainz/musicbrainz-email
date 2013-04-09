@@ -8,9 +8,8 @@ import Prelude hiding (catch)
 --------------------------------------------------------------------------------
 import Control.Applicative
 import Control.Exception (SomeException, catch, evaluate)
-import Control.Monad (forever, join, void)
+import Control.Monad (forever, void)
 import Control.Monad.Trans.Either (runEitherT)
-import Data.Data
 import Data.Functor.Identity (Identity, runIdentity)
 import Control.Concurrent.MVar (newMVar, readMVar, withMVar)
 import Control.Concurrent (threadDelay)
@@ -21,18 +20,13 @@ import Data.Aeson ((.=))
 import qualified Blaze.ByteString.Builder as Builder
 import qualified Data.Aeson as Aeson
 import qualified Data.Aeson.Generic as GAeson
-import qualified Data.ByteString as BS
-import qualified Data.ByteString.Lazy as LBS
 import qualified Data.Text as Text
 import qualified Data.Time as Time
-import qualified Data.Text.Encoding as Text
 import qualified Heist as Heist
 import qualified Heist.Interpreted as Heist
 import qualified Network.AMQP as AMQP
 import qualified Network.Mail.Mime as Mail
 import qualified Text.XmlHtml as XmlHtml
-
-import qualified Data.Time as Time
 
 --------------------------------------------------------------------------------
 import MusicBrainz.Email
@@ -98,7 +92,7 @@ emailConsumer rabbitMqConn = do
                      }
 
   AMQP.bindQueue rabbitMq invalidQueue failureExchange invalidKey
-  AMQP.bindQueue rabbitMq invalidQueue failureExchange unroutableKey
+  AMQP.bindQueue rabbitMq unroutableQueue failureExchange unroutableKey
 
   heist <- fmap (either (error . show) id) $ runEitherT $ do
       templateRepo <- Heist.loadTemplates "templates"

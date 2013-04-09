@@ -15,18 +15,21 @@ executable musicbrainz-emailer
     src
   main-is: Main.hs
   build-depends:
-    base ==4.5.*,
+    aeson >= 0.6.1.0,
+    amqp >= 0.3.3,
+    base >= 4.5 && < 4.7,
     blaze-builder >= 0.3,
     bytestring >= 0.9.2.1,
-    aeson >= 0.6.1.0,
     either >= 3.4,
-    mime-mail >= 0.4.1.2,
-    amqp >= 0.3.3,
-    text >= 0.11,
     heist >= 0.11,
-    xmlhtml,
-    transformers,
-    time
+    mime-mail >= 0.4.1.2,
+    text >= 0.11,
+    time >= 1.4,
+    transformers >= 0.2.2.0,
+    xmlhtml >= 0.2.1
+  ghc-options: -Wall -fwarn-tabs -funbox-strict-fields -O2
+               -fno-warn-orphans -fno-warn-unused-do-bind
+               -Werror
 
 executable enqueue-mass-mail
   hs-source-dirs:
@@ -34,10 +37,13 @@ executable enqueue-mass-mail
     src
   main-is: Main.hs
   build-depends:
-    base ==4.5.*,
     aeson >= 0.6.1.0,
-    mime-mail >= 0.4.1.2,
     amqp >= 0.3.3,
-    postgresql-simple,
-    optparse-applicative,
+    base >= 4.5 && < 4.7,
+    mime-mail >= 0.4.1.2,
+    optparse-applicative >= 0.5,
+    postgresql-simple >= 0.3,
     text >= 0.11
+  ghc-options: -Wall -fwarn-tabs -funbox-strict-fields -O2
+               -fno-warn-orphans -fno-warn-unused-do-bind
+               -Werror
