@@ -9,8 +9,10 @@ maintainer: ollie@ocharles.org.uk
 build-type: Simple
 cabal-version: >=1.8
 
-executable mass-mail
-  hs-source-dirs: src
+executable musicbrainz-emailer
+  hs-source-dirs:
+    mailer
+    src
   main-is: Main.hs
   build-depends:
     base ==4.5.*,
@@ -24,3 +26,17 @@ executable mass-mail
     heist >= 0.11,
     xmlhtml,
     transformers
+
+executable enqueue-mass-mail
+  hs-source-dirs:
+    enqueue
+    src
+  main-is: Main.hs
+  build-depends:
+    base ==4.5.*,
+    aeson >= 0.6.1.0,
+    mime-mail >= 0.4.1.2,
+    amqp >= 0.3.3,
+    postgresql-simple,
+    optparse-applicative,
+    text >= 0.11

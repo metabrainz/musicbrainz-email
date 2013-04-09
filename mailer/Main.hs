@@ -1,6 +1,4 @@
-{-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE StandaloneDeriving #-}
 module Main (main) where
 
 --------------------------------------------------------------------------------
@@ -31,20 +29,7 @@ import qualified Text.XmlHtml as XmlHtml
 
 
 --------------------------------------------------------------------------------
-deriving instance Data Mail.Address
-deriving instance Typeable Mail.Address
-
-data Email = Email
-    { emailTemplate :: Template
-    , emailTo :: Mail.Address
-    , emailFrom :: Mail.Address
-    }
-  deriving (Data, Typeable)
-
-
---------------------------------------------------------------------------------
-data Template = PasswordReset { passwordResetEditor :: Text.Text }
-  deriving (Data, Typeable)
+import MusicBrainz.Email
 
 
 --------------------------------------------------------------------------------
@@ -163,5 +148,3 @@ main = do
   AMQP.consumeMsgs rabbitMq outboxQueue AMQP.Ack (uncurry consumer)
 
   void $ forever getLine
- where
-  outboxExchange = "outbox"
