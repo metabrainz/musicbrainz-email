@@ -82,8 +82,6 @@ rateLimiter :: Time.NominalDiffTime -> IO (IO ())
 rateLimiter rate = do
   lastSent <- Time.getCurrentTime >>= newMVar
 
-  putStrLn $ "Established maximum delay of " ++ show (1 / rate)
-
   return $ do
     now <- Time.getCurrentTime
     lastSentAt <- readMVar lastSent
@@ -102,8 +100,10 @@ rateLimiter rate = do
 -- | Takes a 'AMQP.Connection' and returns a callback that can be used on the
 -- outbox queue. To form the callback, IO is performed to open a 'AMQP.Channel'
 -- for the callback, so that it can publish failures.
-emailConsumer :: AMQP.Connection -> IO (AMQP.Message -> AMQP.Envelope -> IO ())
-emailConsumer rabbitMqConn = do
+emailConsumer :: AMQP.Connection
+              -> (Mail.Mail -> IO ())
+              -> IO (AMQP.Message -> AMQP.Envelope -> IO ())
+emailConsumer rabbitMqConn sendMail = do
   rabbitMq <- AMQP.openChannel rabbitMqConn
   heist <- loadTemplates
 
@@ -139,7 +139,7 @@ emailConsumer rabbitMqConn = do
                 ]
             }
       in Error.bimapEitherT exceptionMessage id $ Error.EitherT $
-           try (Mail.renderSendMail mail)
+           try (sendMail mail)
 
   publishFailure rabbitMq = AMQP.publishMsg rabbitMq Email.failureExchange
 

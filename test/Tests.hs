@@ -4,7 +4,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE StandaloneDeriving #-}
-module Main where
+module Main (main) where
 
 --------------------------------------------------------------------------------
 import Control.Monad.IO.Class (liftIO)
@@ -42,22 +42,22 @@ import qualified MusicBrainz.Messaging as Messaging
 main :: IO ()
 main = Tests.defaultMain [ enqueuePasswordResets
                          , expandTemplates
+                         , messagesAreSent
                          ]
 
 
 --------------------------------------------------------------------------------
 enqueuePasswordResets :: Tests.Test
-enqueuePasswordResets = Tests.plusTestOptions timeOut $
+enqueuePasswordResets = withTimeOut $
   Tests.testCase "Will send password reset emails to editors" $ do
-    rabbitMq <- Messaging.connect testRabbit >>= AMQP.openChannel
+    (rabbitMq, _) <- testRabbit
     pg <- PG.connect testPg
 
     insertTestData pg
-    Email.establishRabbitMqConfiguration rabbitMq
 
     sentMessages <- spyOutbox rabbitMq
 
-    liftIO (Enqueue.run (Enqueue.Options (Enqueue.GoPasswordReset testPg) testRabbit))
+    liftIO (Enqueue.run (Enqueue.Options (Enqueue.GoPasswordReset testPg) testRabbitSettings))
 
     sentMessage <- Chan.readChan sentMessages
     sentMessage @?= Just expected
@@ -81,14 +81,6 @@ enqueuePasswordResets = Tests.plusTestOptions timeOut $
                           , PG.connectDatabase = "musicbrainz_test"
                           , PG.connectHost = "localhost"
                           }
-
-  testRabbit = Messaging.RabbitMQConnection { Messaging.rabbitHost = "127.0.0.1"
-                                            , Messaging.rabbitVHost = "/test/email"
-                                            , Messaging.rabbitUser = "guest"
-                                            , Messaging.rabbitPassword = "guest"
-                                            }
-
-  timeOut = mempty { Tests.topt_timeout = Just (Just 1000000) }
 
   spyOutbox rabbitMq = do
     sentMessages <- Chan.newChan
@@ -149,3 +141,76 @@ expandTemplates = Tests.buildTest $ do
     Text.append "https://musicbrainz.org/account/change-password?mandatory=1&username="
 
   greeting = Text.append "Dear "
+
+
+--------------------------------------------------------------------------------
+deriving instance Eq Mail.Encoding
+deriving instance Show Mail.Encoding
+
+deriving instance Eq Mail.Mail
+deriving instance Show Mail.Mail
+
+deriving instance Eq Mail.Part
+deriving instance Show Mail.Part
+
+messagesAreSent :: Tests.Test
+messagesAreSent = withTimeOut $
+  Tests.testCase "Emails in outbox are sent by outbox consumer" $ do
+    (rabbitMq, rabbitMqConn) <- testRabbit
+
+    heist <- Mailer.loadTemplates
+
+    sentEmails <- Chan.newChan
+    consumer <- Mailer.emailConsumer rabbitMqConn (Chan.writeChan sentEmails)
+
+    AMQP.consumeMsgs rabbitMq Email.outboxQueue AMQP.Ack (uncurry consumer)
+
+    AMQP.publishMsg rabbitMq Email.outboxExchange ""
+      AMQP.newMsg { AMQP.msgBody = Aeson.encode validEmail }
+
+    sentEmail <- Chan.readChan sentEmails
+    Just sentEmail @?= Mailer.emailToMail validEmail heist
+
+ where
+  validEmail = Email.Email
+    { Email.emailTemplate = Email.PasswordReset "ocharles"
+    , Email.emailTo =
+        Mail.Address { Mail.addressName = Nothing
+                     , Mail.addressEmail = "foo@example.com"
+                     }
+    , Email.emailFrom =
+        Mail.Address { Mail.addressName = Just "MusicBrainz"
+                     , Mail.addressEmail = "noreply@musicbrainz.org"
+                     }
+    }
+
+
+--------------------------------------------------------------------------------
+testRabbit :: IO (AMQP.Channel, AMQP.Connection)
+testRabbit = do
+  rabbitMqConn <- Messaging.connect testRabbitSettings
+  rabbitMq <- AMQP.openChannel rabbitMqConn
+  Email.establishRabbitMqConfiguration rabbitMq
+
+  AMQP.purgeQueue rabbitMq Email.outboxQueue
+
+  return (rabbitMq, rabbitMqConn)
+
+ where
+
+
+--------------------------------------------------------------------------------
+testRabbitSettings :: Messaging.RabbitMQConnection
+testRabbitSettings =
+  Messaging.RabbitMQConnection
+    { Messaging.rabbitHost = "127.0.0.1"
+    , Messaging.rabbitVHost = "/test/email"
+    , Messaging.rabbitUser = "guest"
+    , Messaging.rabbitPassword = "guest"
+    }
+
+
+--------------------------------------------------------------------------------
+withTimeOut :: Tests.Test -> Tests.Test
+withTimeOut =
+  Tests.plusTestOptions mempty { Tests.topt_timeout = Just (Just 5000000) }

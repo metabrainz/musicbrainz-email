@@ -6,6 +6,7 @@ import Control.Monad (forever, void)
 
 
 --------------------------------------------------------------------------------
+import qualified Network.Mail.Mime as Mail
 import qualified Network.AMQP as AMQP
 
 
@@ -21,7 +22,7 @@ main = do
 
   Email.establishRabbitMqConfiguration rabbitMq
 
-  consumer <- Mailer.emailConsumer rabbitMqConn
+  consumer <- Mailer.emailConsumer rabbitMqConn Mail.renderSendMail
   AMQP.consumeMsgs rabbitMq Email.outboxQueue AMQP.Ack (uncurry consumer)
 
   void $ forever getLine
