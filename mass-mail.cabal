@@ -48,3 +48,25 @@ executable enqueue-mass-mail
   ghc-options: -Wall -fwarn-tabs -funbox-strict-fields -O2
                -fno-warn-orphans -fno-warn-unused-do-bind
                -Werror
+
+test-suite tests:
+  type: exitcode-stdio-1.0
+  main-is: Tests.hs
+  hs-source-dirs:
+    test
+    src
+    enqueue
+  build-depends:
+    aeson >= 0.6.1.0,
+    amqp >= 0.3.3,
+    base >= 4.5 && < 4.7,
+    HUnit >= 1.2,
+    mime-mail >= 0.4.1.2,
+    postgresql-simple >= 0.2,
+    test-framework >= 0.8,
+    test-framework-hunit >= 0.3,
+    text >= 0.11,
+    transformers >= 0.2.2.0
+  ghc-options: -Wall -fwarn-tabs -funbox-strict-fields -O2
+               -fno-warn-orphans -fno-warn-unused-do-bind
+               -Werror

@@ -105,8 +105,6 @@ rateLimiter rate = do
 emailConsumer :: AMQP.Connection -> IO (AMQP.Message -> AMQP.Envelope -> IO ())
 emailConsumer rabbitMqConn = do
   rabbitMq <- AMQP.openChannel rabbitMqConn
-
-  establishRabbitMqConfiguration rabbitMq
   heist <- loadTemplates
 
   rateLimit <- let approximateEditorCount = 680000
@@ -115,8 +113,8 @@ emailConsumer rabbitMqConn = do
 
   return $ \msg env -> do
     maybe
-      (publishFailure rabbitMq invalidKey msg)
-      (Error.eitherT (publishFailure rabbitMq unroutableKey) return .
+      (publishFailure rabbitMq Email.invalidKey msg)
+      (Error.eitherT (publishFailure rabbitMq Email.unroutableKey) return .
          (trySendEmail heist >=> const (lift rateLimit)))
       (GAeson.decode $ AMQP.msgBody msg)
 
@@ -143,26 +141,7 @@ emailConsumer rabbitMqConn = do
       in Error.bimapEitherT exceptionMessage id $ Error.EitherT $
            try (Mail.renderSendMail mail)
 
-  publishFailure rabbitMq = AMQP.publishMsg rabbitMq failureExchange
-
-  failureExchange = "failure"
-  invalidKey = "invalid"
-  unroutableKey = "unroutable"
-
-  establishRabbitMqConfiguration rabbitMq = do
-    (invalidQueue, _, _) <- AMQP.declareQueue rabbitMq
-      AMQP.newQueue { AMQP.queueName = "outbox.invalid" }
-
-    (unroutableQueue, _, _) <- AMQP.declareQueue rabbitMq
-      AMQP.newQueue { AMQP.queueName = "outbox.unroutable" }
-
-    AMQP.declareExchange rabbitMq
-      AMQP.newExchange { AMQP.exchangeName = failureExchange
-                       , AMQP.exchangeType = "direct"
-                       }
-
-    AMQP.bindQueue rabbitMq invalidQueue failureExchange invalidKey
-    AMQP.bindQueue rabbitMq unroutableQueue failureExchange unroutableKey
+  publishFailure rabbitMq = AMQP.publishMsg rabbitMq Email.failureExchange
 
   loadTemplates = fmap (either (error . show) id) $ Error.runEitherT $ do
       templateRepo <- Heist.loadTemplates "templates"
@@ -175,17 +154,9 @@ main = do
   rabbitMqConn <- AMQP.openConnection "127.0.0.1" "/email" "guest" "guest"
   rabbitMq <- AMQP.openChannel rabbitMqConn
 
-  (outboxQueue, _, _) <- AMQP.declareQueue rabbitMq
-    AMQP.newQueue { AMQP.queueName = "outbox" }
-
-  AMQP.declareExchange rabbitMq
-    AMQP.newExchange { AMQP.exchangeName = Email.outboxExchange
-                     , AMQP.exchangeType = "fanout"
-                     }
-
-  AMQP.bindQueue rabbitMq outboxQueue Email.outboxExchange ""
+  Email.establishRabbitMqConfiguration rabbitMq
 
   consumer <- emailConsumer rabbitMqConn
-  AMQP.consumeMsgs rabbitMq outboxQueue AMQP.Ack (uncurry consumer)
+  AMQP.consumeMsgs rabbitMq Email.outboxQueue AMQP.Ack (uncurry consumer)
 
   void $ forever getLine
