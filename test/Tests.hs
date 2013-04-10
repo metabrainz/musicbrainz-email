@@ -6,7 +6,6 @@
 module Main (main) where
 
 --------------------------------------------------------------------------------
-import Control.Applicative ((<$>))
 import Control.Exception (bracket)
 import Control.Monad.IO.Class (liftIO)
 import qualified Control.Concurrent.Chan as Chan
@@ -109,22 +108,25 @@ expandTemplates = Tests.buildTest $ do
   heist <- Mailer.loadTemplates
   return $ Tests.testGroup "Can expand templates into real emails"
     [ Tests.withDepth 4 $ Tests.testProperty "Password reset emails" $
-        \editor emailTo emailFrom ->
-           let Just mail = Mailer.emailToMail
+        \editor emailAddress emailFrom ->
+           let emailTo = Mail.Address { Mail.addressEmail = emailAddress
+                                      , Mail.addressName = Just editor
+                                      }
+               Just mail = Mailer.emailToMail
                  Email.Email { Email.emailTemplate = Email.PasswordReset editor
-                             , Email.emailTo =
-                                 Mail.Address { Mail.addressEmail = emailTo
-                                              , Mail.addressName = Just editor
-                                              }
+                             , Email.emailTo = emailTo
                              , Email.emailFrom = emailFrom
                              }
                  heist
                emailBody = Encoding.decodeUtf8 . BS.concat . LBS.toChunks .
                  Mail.partContent . head . head . Mail.mailParts $ mail
-           in and $ map (flip Text.isInfixOf emailBody)
-                [ changePasswordUrl editor
-                , greeting editor
-                ]
+           in and $ [ Mail.mailTo mail == [ emailTo ]
+                    , Mail.mailFrom mail == emailFrom
+                    ] ++
+                    map (flip Text.isInfixOf emailBody)
+                      [ changePasswordUrl editor
+                      , greeting editor
+                      ]
     ]
 
  where
@@ -229,9 +231,8 @@ heistFailureRouting = withTimeOut $
       unroutableMessages <- spyQueue rabbitMq Email.unroutableQueue
 
       -- A 'Heist' that doesn't know about any of the templates
-      emptyHeist <- either (error.show) id <$>
-                 Error.runEitherT (Heist.initHeist mempty)
-      Mailer.consumeOutbox rabbitMqConn (const $ error errorMessage) emptyHeist
+      Right emptyHeist <- Error.runEitherT (Heist.initHeist mempty)
+      Mailer.consumeOutbox rabbitMqConn (const $ return ()) emptyHeist
 
       AMQP.publishMsg rabbitMq Email.outboxExchange ""
         AMQP.newMsg { AMQP.msgBody = Aeson.encode testEmail }
@@ -239,10 +240,6 @@ heistFailureRouting = withTimeOut $
       unroutableMessage <- Chan.readChan unroutableMessages
       Aeson.decode (AMQP.msgBody unroutableMessage)
         @?= Just testEmail
-
- where
-
-  errorMessage = "Kaboom!"
 
 
 --------------------------------------------------------------------------------

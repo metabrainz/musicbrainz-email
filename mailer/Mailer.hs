@@ -8,7 +8,7 @@ import Prelude hiding (catch)
 --------------------------------------------------------------------------------
 import Control.Applicative ((<$>))
 import Control.Exception (SomeException, evaluate, try)
-import Control.Monad (void)
+import Control.Monad (join, void)
 import Data.Functor.Identity (Identity, runIdentity)
 import Data.Monoid (mempty)
 import Control.Concurrent.MVar (newMVar, readMVar, withMVar)
@@ -93,7 +93,7 @@ rateLimiter rate = do
 
  where
   updateLastSent lastTime = void $
-    withMVar lastTime (const $ evaluate <$> Time.getCurrentTime)
+    withMVar lastTime (const $ join $ evaluate Time.getCurrentTime)
 
 
 --------------------------------------------------------------------------------
