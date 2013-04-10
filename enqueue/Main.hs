@@ -51,9 +51,9 @@ evaluateCommand (GoPasswordReset connInfo) = do
               { Mail.addressName = Just editorName
               , Mail.addressEmail = emailAddress
               }
-          , emailFrom =Mail.Address
+          , emailFrom = Mail.Address
               { Mail.addressName = Just "MusicBrainz"
-              , Mail.addressEmail = "no-reply@musicbrainz.org"
+              , Mail.addressEmail = "noreply@musicbrainz.org"
               }
           }
     in return (email : emails)
