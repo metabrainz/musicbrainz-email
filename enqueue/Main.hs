@@ -19,8 +19,9 @@ import Database.PostgreSQL.Simple.SqlQQ (sql)
 --------------------------------------------------------------------------------
 import MusicBrainz.Email
 
+
 --------------------------------------------------------------------------------
-data Command = GoPasswordReset PG.ConnectInfo RabbitMQConnection
+data Command = GoPasswordReset PG.ConnectInfo
 
 
 --------------------------------------------------------------------------------
@@ -30,44 +31,59 @@ data RabbitMQConnection = RabbitMQConnection { rabbitHost :: String
                                              , rabbitPassword :: String
                                              }
 
---------------------------------------------------------------------------------
-run :: Command -> IO ()
-run (GoPasswordReset connInfo r) = do
-  putStrLn "Sending out password reset emails"
 
+--------------------------------------------------------------------------------
+data Options = Options Command RabbitMQConnection
+
+
+--------------------------------------------------------------------------------
+evaluateCommand :: Command -> IO [Email]
+evaluateCommand (GoPasswordReset connInfo) = do
   pg <- PG.connect connInfo
 
+  PG.fold_ pg editorsWithEmailAddresses [] go
+
+ where
+  go emails (editorName, emailAddress) =
+    let email = Email
+          { emailTemplate = PasswordReset editorName
+          , emailTo = Mail.Address
+              { Mail.addressName = Just editorName
+              , Mail.addressEmail = emailAddress
+              }
+          , emailFrom =Mail.Address
+              { Mail.addressName = Just "MusicBrainz"
+              , Mail.addressEmail = "no-reply@musicbrainz.org"
+              }
+          }
+    in return (email : emails)
+
+  editorsWithEmailAddresses =
+    [sql| SELECT name, email
+          FROM editor
+          WHERE email IS DISTINCT FROM ''
+            AND email_confirm_date IS NOT NULL
+            AND last_login_date < '2013-04-29'
+    |]
+
+--------------------------------------------------------------------------------
+run :: Options -> IO ()
+run (Options command r) = do
   rabbitMqConn <- AMQP.openConnection
     (rabbitHost r) (rabbitVHost r) (rabbitUser r) (rabbitPassword r)
 
   rabbitMq <- AMQP.openChannel rabbitMqConn
 
-  PG.forEach_ pg editorsWithEmailAddresses $ \(editorName, emailAddress) -> do
+  evaluateCommand command >>= mapM_ (enqueueEmail rabbitMq)
+
+ where
+
+  enqueueEmail rabbitMq email =
     AMQP.publishMsg rabbitMq outboxExchange ""
       AMQP.newMsg
-        { AMQP.msgBody = Aeson.encode Email
-            { emailTemplate = PasswordReset editorName
-            , emailTo = Mail.Address
-                { Mail.addressName = Just editorName
-                , Mail.addressEmail = emailAddress
-                }
-            , emailFrom =Mail.Address
-                { Mail.addressName = Just "MusicBrainz"
-                , Mail.addressEmail = "no-reply@musicbrainz.org"
-                }
-            }
+        { AMQP.msgBody = Aeson.encode email
         , AMQP.msgDeliveryMode = Just AMQP.Persistent
         }
-
-  where
-
-    editorsWithEmailAddresses =
-      [sql| SELECT name, email
-            FROM editor
-            WHERE email IS DISTINCT FROM ''
-              AND email_confirm_date IS NOT NULL
-              AND last_login_date < '2013-04-29'
-      |]
 
 
 --------------------------------------------------------------------------------
@@ -77,11 +93,13 @@ main = Optparse.execParser parser >>= run
   where
 
     parser =
-      Optparse.info (Optparse.subparser (mconcat commands) <**> Optparse.helper)
+      Optparse.info (Options <$> Optparse.subparser (mconcat commands)
+                             <*> rabbitOptions
+                             <**> Optparse.helper)
                     mempty
 
     commands = [ Optparse.command "password-reset" $
-                   Optparse.info (GoPasswordReset <$> dbOptions <*> rabbitOptions <**> Optparse.helper)
+                   Optparse.info (GoPasswordReset <$> dbOptions <**> Optparse.helper)
                      (Optparse.progDesc "Send mandatory password reset emails")
                ]
 
