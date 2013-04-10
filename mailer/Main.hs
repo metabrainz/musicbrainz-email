@@ -7,17 +7,18 @@ import Prelude hiding (catch)
 
 --------------------------------------------------------------------------------
 import Control.Applicative ((<$>))
-import Control.Exception (SomeException, catch, evaluate)
-import Control.Monad (forever, void)
-import Control.Monad.Trans.Either (runEitherT)
+import Control.Exception (SomeException, evaluate, try)
+import Control.Monad ((>=>), forever, void)
 import Data.Functor.Identity (Identity, runIdentity)
 import Control.Concurrent.MVar (newMVar, readMVar, withMVar)
 import Control.Concurrent (threadDelay)
 
+import Control.Monad.Trans (lift)
 import Data.Aeson ((.=))
 
 --------------------------------------------------------------------------------
 import qualified Blaze.ByteString.Builder as Builder
+import qualified Control.Error as Error
 import qualified Data.Aeson as Aeson
 import qualified Data.Aeson.Generic as GAeson
 import qualified Data.Text as Text
@@ -73,6 +74,31 @@ emailToMail email heist = runIdentity $
 
 
 --------------------------------------------------------------------------------
+-- | Given a rate, which is the maximum allowable throughput per second, this
+-- will produce a rate limiting action, which when invoked will cause the
+-- calling thread to sleep for the minimum duration required to adhere to the
+-- requested rate limit.
+rateLimiter :: Time.NominalDiffTime -> IO (IO ())
+rateLimiter rate = do
+  lastSent <- Time.getCurrentTime >>= newMVar
+
+  putStrLn $ "Established maximum delay of " ++ show (1 / rate)
+
+  return $ do
+    now <- Time.getCurrentTime
+    lastSentAt <- readMVar lastSent
+
+    threadDelay $ floor $
+      max 0 ((1 / rate) - (now `Time.diffUTCTime` lastSentAt)) * 1000000
+
+    updateLastSent lastSent
+
+ where
+  updateLastSent lastTime = void $
+    withMVar lastTime (const $ evaluate <$> Time.getCurrentTime)
+
+
+--------------------------------------------------------------------------------
 -- | Takes a 'AMQP.Connection' and returns a callback that can be used on the
 -- outbox queue. To form the callback, IO is performed to open a 'AMQP.Channel'
 -- for the callback, so that it can publish failures.
@@ -80,64 +106,67 @@ emailConsumer :: AMQP.Connection -> IO (AMQP.Message -> AMQP.Envelope -> IO ())
 emailConsumer rabbitMqConn = do
   rabbitMq <- AMQP.openChannel rabbitMqConn
 
-  (invalidQueue, _, _) <- AMQP.declareQueue rabbitMq
-    AMQP.newQueue { AMQP.queueName = "outbox.invalid" }
+  establishRabbitMqConfiguration rabbitMq
+  heist <- loadTemplates
 
-  (unroutableQueue, _, _) <- AMQP.declareQueue rabbitMq
-    AMQP.newQueue { AMQP.queueName = "outbox.unroutable" }
-
-  AMQP.declareExchange rabbitMq
-    AMQP.newExchange { AMQP.exchangeName = failureExchange
-                     , AMQP.exchangeType = "direct"
-                     }
-
-  AMQP.bindQueue rabbitMq invalidQueue failureExchange invalidKey
-  AMQP.bindQueue rabbitMq unroutableQueue failureExchange unroutableKey
-
-  heist <- fmap (either (error . show) id) $ runEitherT $ do
-      templateRepo <- Heist.loadTemplates "templates"
-      Heist.initHeist (Heist.HeistConfig [] [] [] [] templateRepo)
-
-  lastTime <- Time.getCurrentTime >>= newMVar
-  let updateLastSent = void $ withMVar lastTime (const $ evaluate <$> Time.getCurrentTime)
+  rateLimit <- let approximateEditorCount = 680000
+                   day = 24 * 60 * 60.0
+               in rateLimiter (approximateEditorCount / day)
 
   return $ \msg env -> do
-    case GAeson.decode (AMQP.msgBody msg) of
-      -- JSON decoding failed
-      Nothing ->
-        AMQP.publishMsg rabbitMq failureExchange invalidKey msg
-
-      Just email -> do
-        case emailToMail email heist of
-          -- Template rendering failed
-          Nothing ->
-            AMQP.publishMsg rabbitMq failureExchange invalidKey msg
-
-          Just mail -> do
-            now <- Time.getCurrentTime
-            lastSentAt <- readMVar lastTime
-
-            threadDelay $ floor $
-              (max 0 (maxRate - (now `Time.diffUTCTime` lastSentAt))) * 1000000
-
-            (Mail.renderSendMail mail >> updateLastSent) `catch`
-              (\e -> AMQP.publishMsg rabbitMq failureExchange unroutableKey
-                       AMQP.newMsg
-                         { AMQP.msgBody = Aeson.encode $ Aeson.object
-                             [ "email" .= GAeson.encode email
-                             , "error" .= Text.pack (show (e :: SomeException))
-                             ]
-                         })
+    maybe
+      (publishFailure rabbitMq invalidKey msg)
+      (Error.eitherT (publishFailure rabbitMq unroutableKey) return .
+         (trySendEmail heist >=> const (lift rateLimit)))
+      (GAeson.decode $ AMQP.msgBody msg)
 
     AMQP.ackEnv env
 
  where
 
+  trySendEmail heist email = tryFormEmail >>= trySend
+
+   where
+
+    tryFormEmail =
+      let failureMessage = AMQP.newMsg { AMQP.msgBody = GAeson.encode email }
+      in Error.EitherT $ return $
+           Error.note failureMessage $ emailToMail email heist
+
+    trySend mail =
+      let exceptionMessage e = AMQP.newMsg
+            { AMQP.msgBody = Aeson.encode $ Aeson.object
+                [ "email" .= GAeson.encode email
+                , "error" .= Text.pack (show (e :: SomeException))
+                ]
+            }
+      in Error.bimapEitherT exceptionMessage id $ Error.EitherT $
+           try (Mail.renderSendMail mail)
+
+  publishFailure rabbitMq = AMQP.publishMsg rabbitMq failureExchange
+
   failureExchange = "failure"
   invalidKey = "invalid"
   unroutableKey = "unroutable"
 
-  maxRate = 0.12342
+  establishRabbitMqConfiguration rabbitMq = do
+    (invalidQueue, _, _) <- AMQP.declareQueue rabbitMq
+      AMQP.newQueue { AMQP.queueName = "outbox.invalid" }
+
+    (unroutableQueue, _, _) <- AMQP.declareQueue rabbitMq
+      AMQP.newQueue { AMQP.queueName = "outbox.unroutable" }
+
+    AMQP.declareExchange rabbitMq
+      AMQP.newExchange { AMQP.exchangeName = failureExchange
+                       , AMQP.exchangeType = "direct"
+                       }
+
+    AMQP.bindQueue rabbitMq invalidQueue failureExchange invalidKey
+    AMQP.bindQueue rabbitMq unroutableQueue failureExchange unroutableKey
+
+  loadTemplates = fmap (either (error . show) id) $ Error.runEitherT $ do
+      templateRepo <- Heist.loadTemplates "templates"
+      Heist.initHeist (Heist.HeistConfig [] [] [] [] templateRepo)
 
 
 --------------------------------------------------------------------------------
