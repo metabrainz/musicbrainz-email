@@ -6,7 +6,7 @@ import Prelude hiding (catch)
 
 
 --------------------------------------------------------------------------------
-import Control.Applicative
+import Control.Applicative ((<$>))
 import Control.Exception (SomeException, catch, evaluate)
 import Control.Monad (forever, void)
 import Control.Monad.Trans.Either (runEitherT)
@@ -29,11 +29,11 @@ import qualified Network.Mail.Mime as Mail
 import qualified Text.XmlHtml as XmlHtml
 
 --------------------------------------------------------------------------------
-import MusicBrainz.Email
+import qualified MusicBrainz.Email as Email
 
 
 --------------------------------------------------------------------------------
-emailToMail :: Email -> Heist.HeistState Identity -> Maybe Mail.Mail
+emailToMail :: Email.Email -> Heist.HeistState Identity -> Maybe Mail.Mail
 emailToMail email heist = runIdentity $
   Heist.evalHeistT
     mailBuilder
@@ -46,20 +46,20 @@ emailToMail email heist = runIdentity $
 
   runTemplate = Builder.toLazyByteString . XmlHtml.renderHtmlFragment XmlHtml.UTF8
 
-  template = emailTemplate email
+  template = Email.emailTemplate email
 
   templatePath = case template of
-    (PasswordReset _) -> "password-reset"
+    (Email.PasswordReset _) -> "password-reset"
 
   templateBindings = case template of
-    (PasswordReset editor) -> [("editor", editor)]
+    (Email.PasswordReset editor) -> [("editor", editor)]
 
   emailSubject = case template of
-    (PasswordReset _) -> "Mandatory Password Reset"
+    (Email.PasswordReset _) -> "Mandatory Password Reset"
 
   makeMail messageBody = Mail.Mail
-    { Mail.mailFrom = emailFrom email
-    , Mail.mailTo = [ emailTo email ]
+    { Mail.mailFrom = Email.emailFrom email
+    , Mail.mailTo = [ Email.emailTo email ]
     , Mail.mailCc = []
     , Mail.mailBcc = []
     , Mail.mailHeaders = [("Subject", emailSubject)]
@@ -150,11 +150,11 @@ main = do
     AMQP.newQueue { AMQP.queueName = "outbox" }
 
   AMQP.declareExchange rabbitMq
-    AMQP.newExchange { AMQP.exchangeName = outboxExchange
+    AMQP.newExchange { AMQP.exchangeName = Email.outboxExchange
                      , AMQP.exchangeType = "fanout"
                      }
 
-  AMQP.bindQueue rabbitMq outboxQueue outboxExchange ""
+  AMQP.bindQueue rabbitMq outboxQueue Email.outboxExchange ""
 
   consumer <- emailConsumer rabbitMqConn
   AMQP.consumeMsgs rabbitMq outboxQueue AMQP.Ack (uncurry consumer)

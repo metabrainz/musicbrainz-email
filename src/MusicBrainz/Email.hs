@@ -3,7 +3,7 @@
 module MusicBrainz.Email (Email(..), Template(..), outboxExchange) where
 
 --------------------------------------------------------------------------------
-import Data.Data
+import Data.Data (Data, Typeable)
 
 
 --------------------------------------------------------------------------------
