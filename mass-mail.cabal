@@ -55,18 +55,29 @@ test-suite tests:
   hs-source-dirs:
     test
     src
+    mailer
     enqueue
   build-depends:
     aeson >= 0.6.1.0,
     amqp >= 0.3.3,
     base >= 4.5 && < 4.7,
+    blaze-builder >= 0.3,
+    bytestring >= 0.9.2.1,
+    errors >= 1.4.1,
+    heist >= 0.11,
     HUnit >= 1.2,
+    ghc-prim,
     mime-mail >= 0.4.1.2,
+    mtl >= 0.3.0.0,
     postgresql-simple >= 0.2,
+    smallcheck == 1.0,
     test-framework >= 0.8,
     test-framework-hunit >= 0.3,
+    test-framework-smallcheck >= 0.1,
     text >= 0.11,
-    transformers >= 0.2.2.0
+    time >= 1.4,
+    transformers >= 0.2.2.0,
+    xmlhtml >= 0.2.1
   ghc-options: -Wall -fwarn-tabs -funbox-strict-fields -O2
                -fno-warn-orphans -fno-warn-unused-do-bind
                -Werror

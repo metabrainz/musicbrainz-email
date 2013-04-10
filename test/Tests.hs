@@ -1,33 +1,48 @@
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE StandaloneDeriving #-}
 module Main where
 
 --------------------------------------------------------------------------------
 import Control.Monad.IO.Class (liftIO)
 import qualified Control.Concurrent.Chan as Chan
 import Data.Monoid (mempty)
+import GHC.Generics (Generic)
 
 import Database.PostgreSQL.Simple.SqlQQ (sql)
 
+
 --------------------------------------------------------------------------------
 import qualified Data.Aeson.Generic as Aeson
+import qualified Data.ByteString as BS
+import qualified Data.ByteString.Lazy as LBS
+import qualified Data.Text as Text
+import qualified Data.Text.Encoding as Encoding
 import qualified Database.PostgreSQL.Simple as PG
 import qualified Network.AMQP as AMQP
 import qualified Network.Mail.Mime as Mail
+import qualified Test.SmallCheck.Series as SmallCheck
 import qualified Test.Framework as Tests
 import qualified Test.Framework.Providers.HUnit as Tests
+import qualified Test.Framework.Providers.SmallCheck as Tests
 
 import Test.HUnit ((@?=))
 
 --------------------------------------------------------------------------------
 import qualified Enqueue
+import qualified Mailer
+
 import qualified MusicBrainz.Email as Email
 import qualified MusicBrainz.Messaging as Messaging
 
-
 --------------------------------------------------------------------------------
 main :: IO ()
-main = Tests.defaultMain [ enqueuePasswordResets ]
+main = Tests.defaultMain [ enqueuePasswordResets
+                         , expandTemplates
+                         ]
 
 
 --------------------------------------------------------------------------------
@@ -96,3 +111,41 @@ enqueuePasswordResets = Tests.plusTestOptions timeOut $
       ( Email.passwordResetEditor $ Email.emailTemplate expected
       , Mail.addressEmail $ Email.emailTo expected
       )
+
+
+--------------------------------------------------------------------------------
+instance Monad m => SmallCheck.Serial m Text.Text where
+  series = SmallCheck.cons1 Text.pack
+
+deriving instance Generic Mail.Address
+instance Monad m => SmallCheck.Serial m Mail.Address
+
+expandTemplates :: Tests.Test
+expandTemplates = Tests.buildTest $ do
+  heist <- Mailer.loadTemplates
+  return $ Tests.testGroup "Can expand templates into real emails"
+    [ Tests.withDepth 4 $ Tests.testProperty "Password reset emails" $
+        \editor emailTo emailFrom ->
+           let Just mail = Mailer.emailToMail
+                 Email.Email { Email.emailTemplate = Email.PasswordReset editor
+                             , Email.emailTo =
+                                 Mail.Address { Mail.addressEmail = emailTo
+                                              , Mail.addressName = Just editor
+                                              }
+                             , Email.emailFrom = emailFrom
+                             }
+                 heist
+               emailBody = Encoding.decodeUtf8 . BS.concat . LBS.toChunks .
+                 Mail.partContent . head . head . Mail.mailParts $ mail
+           in and $ map (flip Text.isInfixOf emailBody)
+                [ changePasswordUrl editor
+                , greeting editor
+                ]
+    ]
+
+ where
+
+  changePasswordUrl =
+    Text.append "https://musicbrainz.org/account/change-password?mandatory=1&username="
+
+  greeting = Text.append "Dear "
