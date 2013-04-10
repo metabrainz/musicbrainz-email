@@ -6,6 +6,7 @@
 module Main (main) where
 
 --------------------------------------------------------------------------------
+import Control.Applicative ((<$>))
 import Control.Exception (bracket)
 import Control.Monad.IO.Class (liftIO)
 import qualified Control.Concurrent.Chan as Chan
@@ -15,12 +16,14 @@ import Database.PostgreSQL.Simple.SqlQQ (sql)
 
 
 --------------------------------------------------------------------------------
+import qualified Control.Error as Error
 import qualified Data.Aeson as Aeson
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as LBS
 import qualified Data.Text as Text
 import qualified Data.Text.Encoding as Encoding
 import qualified Database.PostgreSQL.Simple as PG
+import qualified Heist
 import qualified Network.AMQP as AMQP
 import qualified Network.Mail.Mime as Mail
 import qualified Test.SmallCheck.Series as SmallCheck
@@ -45,6 +48,7 @@ main = Tests.defaultMain [ enqueuePasswordResets
                          , messagesAreSent
                          , invalidMessageRouting
                          , sendMailFailureRouting
+                         , heistFailureRouting
                          ]
 
 
@@ -148,7 +152,7 @@ messagesAreSent = withTimeOut $
       heist <- Mailer.loadTemplates
 
       sentEmails <- Chan.newChan
-      Mailer.consumeOutbox rabbitMqConn (Chan.writeChan sentEmails)
+      Mailer.consumeOutbox rabbitMqConn (Chan.writeChan sentEmails) heist
 
       AMQP.publishMsg rabbitMq Email.outboxExchange ""
         AMQP.newMsg { AMQP.msgBody = Aeson.encode testEmail }
@@ -179,7 +183,8 @@ invalidMessageRouting = withTimeOut $
     withRabbitMq $ \(rabbitMq, rabbitMqConn) -> do
       invalidMessages <- spyQueue rabbitMq Email.invalidQueue
 
-      Mailer.consumeOutbox rabbitMqConn (const $ return ())
+      heist <- Mailer.loadTemplates
+      Mailer.consumeOutbox rabbitMqConn (const $ return ()) heist
 
       AMQP.publishMsg rabbitMq Email.outboxExchange ""
         AMQP.newMsg { AMQP.msgBody = invalidRequest }
@@ -199,7 +204,8 @@ sendMailFailureRouting = withTimeOut $
     withRabbitMq $ \(rabbitMq, rabbitMqConn) -> do
       unroutableMessages <- spyQueue rabbitMq Email.unroutableQueue
 
-      Mailer.consumeOutbox rabbitMqConn (const $ error errorMessage)
+      heist <- Mailer.loadTemplates
+      Mailer.consumeOutbox rabbitMqConn (const $ error errorMessage) heist
 
       AMQP.publishMsg rabbitMq Email.outboxExchange ""
         AMQP.newMsg { AMQP.msgBody = Aeson.encode testEmail }
@@ -209,6 +215,30 @@ sendMailFailureRouting = withTimeOut $
         @?= Just (Aeson.object [ "error" .= errorMessage
                                , "email" .= Aeson.encode testEmail
                                ])
+
+ where
+
+  errorMessage = "Kaboom!"
+
+
+--------------------------------------------------------------------------------
+heistFailureRouting :: Tests.Test
+heistFailureRouting = withTimeOut $
+  Tests.testCase "If Heist can't expand the template, messages are forwarded to outbox.unroutable" $ do
+    withRabbitMq $ \(rabbitMq, rabbitMqConn) -> do
+      unroutableMessages <- spyQueue rabbitMq Email.unroutableQueue
+
+      -- A 'Heist' that doesn't know about any of the templates
+      emptyHeist <- either (error.show) id <$>
+                 Error.runEitherT (Heist.initHeist mempty)
+      Mailer.consumeOutbox rabbitMqConn (const $ error errorMessage) emptyHeist
+
+      AMQP.publishMsg rabbitMq Email.outboxExchange ""
+        AMQP.newMsg { AMQP.msgBody = Aeson.encode testEmail }
+
+      unroutableMessage <- Chan.readChan unroutableMessages
+      Aeson.decode (AMQP.msgBody unroutableMessage)
+        @?= Just testEmail
 
  where
 

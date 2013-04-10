@@ -10,6 +10,7 @@ import Control.Applicative ((<$>))
 import Control.Exception (SomeException, evaluate, try)
 import Control.Monad (void)
 import Data.Functor.Identity (Identity, runIdentity)
+import Data.Monoid (mempty)
 import Control.Concurrent.MVar (newMVar, readMVar, withMVar)
 import Control.Concurrent (threadDelay)
 
@@ -101,10 +102,10 @@ rateLimiter rate = do
 -- for the callback, so that it can publish failures.
 consumeOutbox :: AMQP.Connection
               -> (Mail.Mail -> IO ())
+              -> Heist.HeistState Identity
               -> IO ()
-consumeOutbox rabbitMqConn sendMail = do
+consumeOutbox rabbitMqConn sendMail heist = do
   rabbitMq <- AMQP.openChannel rabbitMqConn
-  heist <- loadTemplates
 
   rateLimit <- let approximateEditorCount = 680000
                    day = 24 * 60 * 60.0
@@ -115,14 +116,14 @@ consumeOutbox rabbitMqConn sendMail = do
       maybe
         (publishFailure rabbitMq Email.invalidKey msg)
         (Error.eitherT (publishFailure rabbitMq Email.unroutableKey) return .
-           (\email -> lift rateLimit >> trySendEmail heist email))
+           (\email -> lift rateLimit >> trySendEmail email))
         (Aeson.decode $ AMQP.msgBody msg)
 
       AMQP.ackEnv env
 
  where
 
-  trySendEmail heist email = tryFormEmail >>= trySend
+  trySendEmail email = tryFormEmail >>= trySend
 
    where
 
@@ -148,4 +149,4 @@ consumeOutbox rabbitMqConn sendMail = do
 loadTemplates :: Monad m => IO (Heist.HeistState m)
 loadTemplates = fmap (either (error . show) id) $ Error.runEitherT $ do
     templateRepo <- Heist.loadTemplates "templates"
-    Heist.initHeist (Heist.HeistConfig [] [] [] [] templateRepo)
+    Heist.initHeist mempty { Heist.hcTemplates = templateRepo }

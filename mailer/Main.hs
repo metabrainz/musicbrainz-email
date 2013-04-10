@@ -21,6 +21,8 @@ main = do
   rabbitMq <- AMQP.openChannel rabbitMqConn
 
   Email.establishRabbitMqConfiguration rabbitMq
-  Mailer.consumeOutbox rabbitMqConn Mail.renderSendMail
+
+  heist <- Mailer.loadTemplates
+  Mailer.consumeOutbox rabbitMqConn Mail.renderSendMail heist
 
   void $ forever getLine
