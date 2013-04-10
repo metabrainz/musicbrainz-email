@@ -3,7 +3,7 @@
 module Enqueue where
 
 --------------------------------------------------------------------------------
-import qualified Data.Aeson.Generic as Aeson
+import qualified Data.Aeson as Aeson
 import qualified Database.PostgreSQL.Simple as PG
 import qualified Network.AMQP as AMQP
 import qualified Network.Mail.Mime as Mail

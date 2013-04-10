@@ -20,7 +20,6 @@ import Data.Aeson ((.=))
 import qualified Blaze.ByteString.Builder as Builder
 import qualified Control.Error as Error
 import qualified Data.Aeson as Aeson
-import qualified Data.Aeson.Generic as GAeson
 import qualified Data.Text as Text
 import qualified Data.Time as Time
 import qualified Heist as Heist
@@ -117,7 +116,7 @@ consumeOutbox rabbitMqConn sendMail = do
         (publishFailure rabbitMq Email.invalidKey msg)
         (Error.eitherT (publishFailure rabbitMq Email.unroutableKey) return .
            (\email -> lift rateLimit >> trySendEmail heist email))
-        (GAeson.decode $ AMQP.msgBody msg)
+        (Aeson.decode $ AMQP.msgBody msg)
 
       AMQP.ackEnv env
 
@@ -128,14 +127,14 @@ consumeOutbox rabbitMqConn sendMail = do
    where
 
     tryFormEmail =
-      let failureMessage = AMQP.newMsg { AMQP.msgBody = GAeson.encode email }
+      let failureMessage = AMQP.newMsg { AMQP.msgBody = Aeson.encode email }
       in Error.EitherT $ return $
            Error.note failureMessage $ emailToMail email heist
 
     trySend mail =
       let exceptionMessage e = AMQP.newMsg
             { AMQP.msgBody = Aeson.encode $ Aeson.object
-                [ "email" .= GAeson.encode email
+                [ "email" .= Aeson.encode email
                 , "error" .= Text.pack (show (e :: SomeException))
                 ]
             }

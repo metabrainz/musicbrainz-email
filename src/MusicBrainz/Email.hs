@@ -1,4 +1,4 @@
-{-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE StandaloneDeriving #-}
 module MusicBrainz.Email
     ( Email(..)
@@ -22,33 +22,42 @@ module MusicBrainz.Email
     ) where
 
 --------------------------------------------------------------------------------
-import Data.Data (Data, Typeable)
+import GHC.Generics (Generic)
 
 
 --------------------------------------------------------------------------------
+import qualified Data.Aeson as Aeson
 import qualified Data.Text as Text
 import qualified Network.AMQP as AMQP
 import qualified Network.Mail.Mime as Mail
 
 
 --------------------------------------------------------------------------------
-deriving instance Data Mail.Address
 deriving instance Eq Mail.Address
+deriving instance Generic Mail.Address
 deriving instance Show Mail.Address
-deriving instance Typeable Mail.Address
 
 data Email = Email
     { emailTemplate :: Template
     , emailTo :: Mail.Address
     , emailFrom :: Mail.Address
     }
-  deriving (Data, Eq, Show, Typeable)
+  deriving (Eq, Generic, Show)
+
+instance Aeson.FromJSON Mail.Address
+instance Aeson.FromJSON Email
+
+instance Aeson.ToJSON Mail.Address
+instance Aeson.ToJSON Email
 
 
 --------------------------------------------------------------------------------
 data Template = PasswordReset { passwordResetEditor :: Text.Text }
-  deriving (Data, Eq, Show, Typeable)
+  deriving (Eq, Generic, Show)
 
+instance Aeson.FromJSON Template
+
+instance Aeson.ToJSON Template
 
 --------------------------------------------------------------------------------
 outboxExchange, failureExchange :: String

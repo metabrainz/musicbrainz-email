@@ -1,4 +1,3 @@
-{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
@@ -11,14 +10,12 @@ import Control.Exception (bracket)
 import Control.Monad.IO.Class (liftIO)
 import qualified Control.Concurrent.Chan as Chan
 import Data.Monoid (mempty)
-import GHC.Generics (Generic)
 
 import Database.PostgreSQL.Simple.SqlQQ (sql)
 
 
 --------------------------------------------------------------------------------
 import qualified Data.Aeson as Aeson
-import qualified Data.Aeson.Generic as GAeson
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as LBS
 import qualified Data.Text as Text
@@ -65,7 +62,7 @@ enqueuePasswordResets = withTimeOut $
       liftIO (Enqueue.run (Enqueue.Options (Enqueue.GoPasswordReset testPg) testRabbitSettings))
 
       sentMessage <- Chan.readChan sentMessages
-      (GAeson.decode (AMQP.msgBody sentMessage)) @?= Just expected
+      (Aeson.decode (AMQP.msgBody sentMessage)) @?= Just expected
 
  where
 
@@ -101,7 +98,6 @@ enqueuePasswordResets = withTimeOut $
 instance Monad m => SmallCheck.Serial m Text.Text where
   series = SmallCheck.cons1 Text.pack
 
-deriving instance Generic Mail.Address
 instance Monad m => SmallCheck.Serial m Mail.Address
 
 expandTemplates :: Tests.Test
@@ -155,7 +151,7 @@ messagesAreSent = withTimeOut $
       Mailer.consumeOutbox rabbitMqConn (Chan.writeChan sentEmails)
 
       AMQP.publishMsg rabbitMq Email.outboxExchange ""
-        AMQP.newMsg { AMQP.msgBody = GAeson.encode testEmail }
+        AMQP.newMsg { AMQP.msgBody = Aeson.encode testEmail }
 
       sentEmail <- Chan.readChan sentEmails
       Just sentEmail @?= Mailer.emailToMail testEmail heist
@@ -206,12 +202,12 @@ sendMailFailureRouting = withTimeOut $
       Mailer.consumeOutbox rabbitMqConn (const $ error errorMessage)
 
       AMQP.publishMsg rabbitMq Email.outboxExchange ""
-        AMQP.newMsg { AMQP.msgBody = GAeson.encode testEmail }
+        AMQP.newMsg { AMQP.msgBody = Aeson.encode testEmail }
 
       unroutableMessage <- Chan.readChan unroutableMessages
       Aeson.decode (AMQP.msgBody unroutableMessage)
         @?= Just (Aeson.object [ "error" .= errorMessage
-                               , "email" .= GAeson.encode testEmail
+                               , "email" .= Aeson.encode testEmail
                                ])
 
  where
