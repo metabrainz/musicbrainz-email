@@ -17,6 +17,8 @@ module MusicBrainz.Email
 
       -- * Queues
     , outboxQueue
+    , invalidQueue
+    , unroutableQueue
     ) where
 
 --------------------------------------------------------------------------------
@@ -51,13 +53,17 @@ data Template = PasswordReset { passwordResetEditor :: Text.Text }
 --------------------------------------------------------------------------------
 outboxExchange, failureExchange :: String
 invalidKey, unroutableKey :: String
-outboxQueue :: String
+outboxQueue, unroutableQueue, invalidQueue :: String
 
 outboxExchange = "outbox"
 failureExchange = "failure"
+
 invalidKey = "invalid"
 unroutableKey = "unroutable"
+
 outboxQueue = "outbox"
+invalidQueue = "outbox.invalid"
+unroutableQueue = "outbox.unroutable"
 
 --------------------------------------------------------------------------------
 establishRabbitMqConfiguration :: AMQP.Channel -> IO ()
@@ -76,11 +82,11 @@ establishRabbitMqConfiguration rabbitMq = do
   AMQP.declareQueue rabbitMq
     AMQP.newQueue { AMQP.queueName = outboxQueue }
 
-  (invalidQueue, _, _) <- AMQP.declareQueue rabbitMq
-    AMQP.newQueue { AMQP.queueName = "outbox.invalid" }
+  AMQP.declareQueue rabbitMq
+    AMQP.newQueue { AMQP.queueName = invalidQueue }
 
-  (unroutableQueue, _, _) <- AMQP.declareQueue rabbitMq
-    AMQP.newQueue { AMQP.queueName = "outbox.unroutable" }
+  AMQP.declareQueue rabbitMq
+    AMQP.newQueue { AMQP.queueName = unroutableQueue }
 
 
   AMQP.bindQueue rabbitMq outboxQueue outboxExchange ""

@@ -21,8 +21,6 @@ main = do
   rabbitMq <- AMQP.openChannel rabbitMqConn
 
   Email.establishRabbitMqConfiguration rabbitMq
-
-  consumer <- Mailer.emailConsumer rabbitMqConn Mail.renderSendMail
-  AMQP.consumeMsgs rabbitMq Email.outboxQueue AMQP.Ack (uncurry consumer)
+  Mailer.consumeOutbox rabbitMqConn Mail.renderSendMail
 
   void $ forever getLine

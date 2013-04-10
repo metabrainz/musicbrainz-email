@@ -8,7 +8,7 @@ import Prelude hiding (catch)
 --------------------------------------------------------------------------------
 import Control.Applicative ((<$>))
 import Control.Exception (SomeException, evaluate, try)
-import Control.Monad ((>=>), void)
+import Control.Monad (void)
 import Data.Functor.Identity (Identity, runIdentity)
 import Control.Concurrent.MVar (newMVar, readMVar, withMVar)
 import Control.Concurrent (threadDelay)
@@ -100,10 +100,10 @@ rateLimiter rate = do
 -- | Takes a 'AMQP.Connection' and returns a callback that can be used on the
 -- outbox queue. To form the callback, IO is performed to open a 'AMQP.Channel'
 -- for the callback, so that it can publish failures.
-emailConsumer :: AMQP.Connection
+consumeOutbox :: AMQP.Connection
               -> (Mail.Mail -> IO ())
-              -> IO (AMQP.Message -> AMQP.Envelope -> IO ())
-emailConsumer rabbitMqConn sendMail = do
+              -> IO ()
+consumeOutbox rabbitMqConn sendMail = do
   rabbitMq <- AMQP.openChannel rabbitMqConn
   heist <- loadTemplates
 
@@ -111,14 +111,15 @@ emailConsumer rabbitMqConn sendMail = do
                    day = 24 * 60 * 60.0
                in rateLimiter (approximateEditorCount / day)
 
-  return $ \msg env -> do
-    maybe
-      (publishFailure rabbitMq Email.invalidKey msg)
-      (Error.eitherT (publishFailure rabbitMq Email.unroutableKey) return .
-         (trySendEmail heist >=> const (lift rateLimit)))
-      (GAeson.decode $ AMQP.msgBody msg)
+  void $ AMQP.consumeMsgs rabbitMq Email.outboxQueue AMQP.Ack $
+    \(msg, env) -> do
+      maybe
+        (publishFailure rabbitMq Email.invalidKey msg)
+        (Error.eitherT (publishFailure rabbitMq Email.unroutableKey) return .
+           (\email -> lift rateLimit >> trySendEmail heist email))
+        (GAeson.decode $ AMQP.msgBody msg)
 
-    AMQP.ackEnv env
+      AMQP.ackEnv env
 
  where
 
@@ -138,8 +139,8 @@ emailConsumer rabbitMqConn sendMail = do
                 , "error" .= Text.pack (show (e :: SomeException))
                 ]
             }
-      in Error.bimapEitherT exceptionMessage id $ Error.EitherT $
-           try (sendMail mail)
+      in Error.bimapEitherT exceptionMessage id $
+           Error.EitherT $ try (sendMail mail)
 
   publishFailure rabbitMq = AMQP.publishMsg rabbitMq Email.failureExchange
 

@@ -7,6 +7,7 @@
 module Main (main) where
 
 --------------------------------------------------------------------------------
+import Control.Exception (bracket)
 import Control.Monad.IO.Class (liftIO)
 import qualified Control.Concurrent.Chan as Chan
 import Data.Monoid (mempty)
@@ -16,7 +17,8 @@ import Database.PostgreSQL.Simple.SqlQQ (sql)
 
 
 --------------------------------------------------------------------------------
-import qualified Data.Aeson.Generic as Aeson
+import qualified Data.Aeson as Aeson
+import qualified Data.Aeson.Generic as GAeson
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as LBS
 import qualified Data.Text as Text
@@ -29,6 +31,7 @@ import qualified Test.Framework as Tests
 import qualified Test.Framework.Providers.HUnit as Tests
 import qualified Test.Framework.Providers.SmallCheck as Tests
 
+import Data.Aeson ((.=))
 import Test.HUnit ((@?=))
 
 --------------------------------------------------------------------------------
@@ -43,24 +46,26 @@ main :: IO ()
 main = Tests.defaultMain [ enqueuePasswordResets
                          , expandTemplates
                          , messagesAreSent
+                         , invalidMessageRouting
+                         , sendMailFailureRouting
                          ]
 
 
 --------------------------------------------------------------------------------
 enqueuePasswordResets :: Tests.Test
 enqueuePasswordResets = withTimeOut $
-  Tests.testCase "Will send password reset emails to editors" $ do
-    (rabbitMq, _) <- testRabbit
-    pg <- PG.connect testPg
+  Tests.testCase "Will send password reset emails to editors" $
+    withRabbitMq $ \(rabbitMq, _) -> do
+      pg <- PG.connect testPg
 
-    insertTestData pg
+      insertTestData pg
 
-    sentMessages <- spyOutbox rabbitMq
+      sentMessages <- spyQueue rabbitMq Email.outboxQueue
 
-    liftIO (Enqueue.run (Enqueue.Options (Enqueue.GoPasswordReset testPg) testRabbitSettings))
+      liftIO (Enqueue.run (Enqueue.Options (Enqueue.GoPasswordReset testPg) testRabbitSettings))
 
-    sentMessage <- Chan.readChan sentMessages
-    sentMessage @?= Just expected
+      sentMessage <- Chan.readChan sentMessages
+      (GAeson.decode (AMQP.msgBody sentMessage)) @?= Just expected
 
  where
 
@@ -81,19 +86,6 @@ enqueuePasswordResets = withTimeOut $
                           , PG.connectDatabase = "musicbrainz_test"
                           , PG.connectHost = "localhost"
                           }
-
-  spyOutbox rabbitMq = do
-    sentMessages <- Chan.newChan
-
-    (spy, _, _) <- AMQP.declareQueue rabbitMq
-                     AMQP.newQueue { AMQP.queueExclusive = True
-                                   , AMQP.queueAutoDelete = True }
-
-    AMQP.bindQueue rabbitMq spy Email.outboxExchange ""
-    AMQP.consumeMsgs rabbitMq spy AMQP.Ack $ \(message, _) ->
-      Chan.writeChan sentMessages (Aeson.decode $ AMQP.msgBody message)
-
-    return sentMessages
 
   insertTestData pg = do
     PG.execute_ pg "TRUNCATE editor CASCADE"
@@ -156,23 +148,22 @@ deriving instance Show Mail.Part
 messagesAreSent :: Tests.Test
 messagesAreSent = withTimeOut $
   Tests.testCase "Emails in outbox are sent by outbox consumer" $ do
-    (rabbitMq, rabbitMqConn) <- testRabbit
+    withRabbitMq $ \(rabbitMq, rabbitMqConn) -> do
+      heist <- Mailer.loadTemplates
 
-    heist <- Mailer.loadTemplates
+      sentEmails <- Chan.newChan
+      Mailer.consumeOutbox rabbitMqConn (Chan.writeChan sentEmails)
 
-    sentEmails <- Chan.newChan
-    consumer <- Mailer.emailConsumer rabbitMqConn (Chan.writeChan sentEmails)
+      AMQP.publishMsg rabbitMq Email.outboxExchange ""
+        AMQP.newMsg { AMQP.msgBody = GAeson.encode testEmail }
 
-    AMQP.consumeMsgs rabbitMq Email.outboxQueue AMQP.Ack (uncurry consumer)
+      sentEmail <- Chan.readChan sentEmails
+      Just sentEmail @?= Mailer.emailToMail testEmail heist
 
-    AMQP.publishMsg rabbitMq Email.outboxExchange ""
-      AMQP.newMsg { AMQP.msgBody = Aeson.encode validEmail }
 
-    sentEmail <- Chan.readChan sentEmails
-    Just sentEmail @?= Mailer.emailToMail validEmail heist
-
- where
-  validEmail = Email.Email
+--------------------------------------------------------------------------------
+testEmail :: Email.Email
+testEmail = Email.Email
     { Email.emailTemplate = Email.PasswordReset "ocharles"
     , Email.emailTo =
         Mail.Address { Mail.addressName = Nothing
@@ -186,17 +177,63 @@ messagesAreSent = withTimeOut $
 
 
 --------------------------------------------------------------------------------
-testRabbit :: IO (AMQP.Channel, AMQP.Connection)
-testRabbit = do
-  rabbitMqConn <- Messaging.connect testRabbitSettings
-  rabbitMq <- AMQP.openChannel rabbitMqConn
-  Email.establishRabbitMqConfiguration rabbitMq
+invalidMessageRouting :: Tests.Test
+invalidMessageRouting = withTimeOut $
+  Tests.testCase "Unparsable emails are forwarded to outbox.invalid" $ do
+    withRabbitMq $ \(rabbitMq, rabbitMqConn) -> do
+      invalidMessages <- spyQueue rabbitMq Email.invalidQueue
 
-  AMQP.purgeQueue rabbitMq Email.outboxQueue
+      Mailer.consumeOutbox rabbitMqConn (const $ return ())
 
-  return (rabbitMq, rabbitMqConn)
+      AMQP.publishMsg rabbitMq Email.outboxExchange ""
+        AMQP.newMsg { AMQP.msgBody = invalidRequest }
+
+      invalidMessage <- Chan.readChan invalidMessages
+      AMQP.msgBody invalidMessage @?= invalidRequest
 
  where
+
+  invalidRequest = LBS.fromChunks [Encoding.encodeUtf8 "Ceci n'est pas une JSON-request"]
+
+
+--------------------------------------------------------------------------------
+sendMailFailureRouting :: Tests.Test
+sendMailFailureRouting = withTimeOut $
+  Tests.testCase "If sendmail doesn't exit cleanly, messages are forwarded to outbox.unroutable" $ do
+    withRabbitMq $ \(rabbitMq, rabbitMqConn) -> do
+      unroutableMessages <- spyQueue rabbitMq Email.unroutableQueue
+
+      Mailer.consumeOutbox rabbitMqConn (const $ error errorMessage)
+
+      AMQP.publishMsg rabbitMq Email.outboxExchange ""
+        AMQP.newMsg { AMQP.msgBody = GAeson.encode testEmail }
+
+      unroutableMessage <- Chan.readChan unroutableMessages
+      Aeson.decode (AMQP.msgBody unroutableMessage)
+        @?= Just (Aeson.object [ "error" .= errorMessage
+                               , "email" .= GAeson.encode testEmail
+                               ])
+
+ where
+
+  errorMessage = "Kaboom!"
+
+
+--------------------------------------------------------------------------------
+withRabbitMq :: ((AMQP.Channel, AMQP.Connection) -> IO a) -> IO a
+withRabbitMq = bracket acquire release
+ where
+
+  acquire = do
+    rabbitMqConn <- Messaging.connect testRabbitSettings
+    rabbitMq <- AMQP.openChannel rabbitMqConn
+    Email.establishRabbitMqConfiguration rabbitMq
+
+    AMQP.purgeQueue rabbitMq Email.outboxQueue
+
+    return (rabbitMq, rabbitMqConn)
+
+  release (_, conn) = AMQP.closeConnection conn
 
 
 --------------------------------------------------------------------------------
@@ -213,4 +250,17 @@ testRabbitSettings =
 --------------------------------------------------------------------------------
 withTimeOut :: Tests.Test -> Tests.Test
 withTimeOut =
-  Tests.plusTestOptions mempty { Tests.topt_timeout = Just (Just 5000000) }
+  Tests.plusTestOptions mempty { Tests.topt_timeout = Just (Just 50000000) }
+
+
+--------------------------------------------------------------------------------
+spyQueue :: AMQP.Channel
+         -> String
+         -> IO (Chan.Chan AMQP.Message)
+spyQueue rabbitMq queue = do
+  sentMessages <- Chan.newChan
+
+  AMQP.consumeMsgs rabbitMq queue AMQP.NoAck $ \(message, _) ->
+    Chan.writeChan sentMessages message
+
+  return sentMessages
