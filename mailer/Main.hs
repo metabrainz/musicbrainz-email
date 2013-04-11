@@ -2,7 +2,7 @@
 module Main (main) where
 
 --------------------------------------------------------------------------------
-import Control.Monad (forever, void)
+import Control.Monad ((>=>), forever, void)
 
 
 --------------------------------------------------------------------------------
@@ -13,6 +13,7 @@ import qualified Network.AMQP as AMQP
 --------------------------------------------------------------------------------
 import qualified Mailer
 import qualified MusicBrainz.Email as Email
+import qualified RateLimit
 
 --------------------------------------------------------------------------------
 main :: IO ()
@@ -22,7 +23,12 @@ main = do
 
   Email.establishRabbitMqConfiguration rabbitMq
 
+  rateLimit <- let approximateEditorCount = 680000
+                   day = 24 * 60 * 60.0
+               in RateLimit.rateLimiter (approximateEditorCount / day)
+
   heist <- Mailer.loadTemplates
-  Mailer.consumeOutbox rabbitMqConn Mail.renderSendMail heist
+  Mailer.consumeOutbox rabbitMqConn heist $
+    Mail.renderSendMail >=> const rateLimit
 
   void $ forever getLine

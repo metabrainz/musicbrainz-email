@@ -154,7 +154,7 @@ messagesAreSent = withTimeOut $
       heist <- Mailer.loadTemplates
 
       sentEmails <- Chan.newChan
-      Mailer.consumeOutbox rabbitMqConn (Chan.writeChan sentEmails) heist
+      Mailer.consumeOutbox rabbitMqConn heist $ Chan.writeChan sentEmails
 
       AMQP.publishMsg rabbitMq Email.outboxExchange ""
         AMQP.newMsg { AMQP.msgBody = Aeson.encode testEmail }
@@ -186,7 +186,7 @@ invalidMessageRouting = withTimeOut $
       invalidMessages <- spyQueue rabbitMq Email.invalidQueue
 
       heist <- Mailer.loadTemplates
-      Mailer.consumeOutbox rabbitMqConn (const $ return ()) heist
+      Mailer.consumeOutbox rabbitMqConn heist (const $ return ())
 
       AMQP.publishMsg rabbitMq Email.outboxExchange ""
         AMQP.newMsg { AMQP.msgBody = invalidRequest }
@@ -207,7 +207,7 @@ sendMailFailureRouting = withTimeOut $
       unroutableMessages <- spyQueue rabbitMq Email.unroutableQueue
 
       heist <- Mailer.loadTemplates
-      Mailer.consumeOutbox rabbitMqConn (const $ error errorMessage) heist
+      Mailer.consumeOutbox rabbitMqConn heist (const $ error errorMessage)
 
       AMQP.publishMsg rabbitMq Email.outboxExchange ""
         AMQP.newMsg { AMQP.msgBody = Aeson.encode testEmail }
@@ -232,7 +232,7 @@ heistFailureRouting = withTimeOut $
 
       -- A 'Heist' that doesn't know about any of the templates
       Right emptyHeist <- Error.runEitherT (Heist.initHeist mempty)
-      Mailer.consumeOutbox rabbitMqConn (const $ return ()) emptyHeist
+      Mailer.consumeOutbox rabbitMqConn emptyHeist (const $ return ())
 
       AMQP.publishMsg rabbitMq Email.outboxExchange ""
         AMQP.newMsg { AMQP.msgBody = Aeson.encode testEmail }
