@@ -1,10 +1,10 @@
-module RateLimit (rateLimiter) where
+module RateLimit (rateLimit) where
 
 --------------------------------------------------------------------------------
+import Control.Applicative ((<*))
 import Control.Concurrent (threadDelay)
-import Control.Concurrent.MVar (newMVar, readMVar, withMVar)
-import Control.Exception (evaluate)
-import Control.Monad (join, void)
+import Control.Concurrent.MVar (newMVar, readMVar, swapMVar)
+import Control.Monad (void)
 
 
 --------------------------------------------------------------------------------
@@ -16,19 +16,18 @@ import qualified Data.Time as Time
 -- will produce a rate limiting action, which when invoked will cause the
 -- calling thread to sleep for the minimum duration required to adhere to the
 -- requested rate limit.
-rateLimiter :: Time.NominalDiffTime -> IO (IO ())
-rateLimiter rate = do
+rateLimit :: Time.NominalDiffTime -> (a -> IO b) -> IO (a -> IO b)
+rateLimit rate action = do
   lastSent <- Time.getCurrentTime >>= newMVar
 
-  return $ do
+  return $ \a -> do
     now <- Time.getCurrentTime
     lastSentAt <- readMVar lastSent
 
-    threadDelay $ floor $
-      max 0 ((1 / rate) - (now `Time.diffUTCTime` lastSentAt)) * 1000000
+    let delay = max 0 ((1 / rate) - (now `Time.diffUTCTime` lastSentAt))
+    threadDelay (floor $ delay * 1000000)
 
-    updateLastSent lastSent
+    action a <* updateLastSent lastSent
 
  where
-  updateLastSent lastTime = void $
-    withMVar lastTime (const $ join $ evaluate Time.getCurrentTime)
+  updateLastSent lastTime = void $ Time.getCurrentTime >>= swapMVar lastTime

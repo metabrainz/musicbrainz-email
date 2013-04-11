@@ -6,7 +6,9 @@
 module Main (main) where
 
 --------------------------------------------------------------------------------
+import Control.Applicative ((<$>))
 import Control.Exception (bracket)
+import Control.Monad (replicateM)
 import Control.Monad.IO.Class (liftIO)
 import qualified Control.Concurrent.Chan as Chan
 import Data.Monoid (mempty)
@@ -21,6 +23,7 @@ import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as LBS
 import qualified Data.Text as Text
 import qualified Data.Text.Encoding as Encoding
+import qualified Data.Time as Time
 import qualified Database.PostgreSQL.Simple as PG
 import qualified Heist
 import qualified Network.AMQP as AMQP
@@ -31,11 +34,12 @@ import qualified Test.Framework.Providers.HUnit as Tests
 import qualified Test.Framework.Providers.SmallCheck as Tests
 
 import Data.Aeson ((.=))
-import Test.HUnit ((@?=))
+import Test.HUnit ((@?=), (@?))
 
 --------------------------------------------------------------------------------
 import qualified Enqueue
 import qualified Mailer
+import qualified RateLimit
 
 import qualified MusicBrainz.Email as Email
 import qualified MusicBrainz.Messaging as Messaging
@@ -48,6 +52,7 @@ main = Tests.defaultMain [ enqueuePasswordResets
                          , invalidMessageRouting
                          , sendMailFailureRouting
                          , heistFailureRouting
+                         , rateLimitTests
                          ]
 
 
@@ -287,3 +292,22 @@ spyQueue rabbitMq queue = do
     Chan.writeChan sentMessages message
 
   return sentMessages
+
+
+--------------------------------------------------------------------------------
+rateLimitTests :: Tests.Test
+rateLimitTests = Tests.testCase "Fast requests are rate limited" $ do
+  let limit = 50
+      requests = 10
+      expected = (fromIntegral requests) / limit
+
+  limitedFunction <- RateLimit.rateLimit limit (const $ return ())
+
+  startTime <- Time.getCurrentTime
+
+  replicateM requests (limitedFunction ())
+
+  duration <- (`Time.diffUTCTime` startTime) <$> Time.getCurrentTime
+  duration >= expected @?
+    (show requests ++ " requests should take at least 1/5 second, took " ++
+     show duration ++ " expected " ++ show expected)

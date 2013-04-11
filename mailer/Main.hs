@@ -2,7 +2,7 @@
 module Main (main) where
 
 --------------------------------------------------------------------------------
-import Control.Monad ((>=>), forever, void)
+import Control.Monad (forever, void)
 
 
 --------------------------------------------------------------------------------
@@ -23,12 +23,12 @@ main = do
 
   Email.establishRabbitMqConfiguration rabbitMq
 
-  rateLimit <- let approximateEditorCount = 680000
-                   day = 24 * 60 * 60.0
-               in RateLimit.rateLimiter (approximateEditorCount / day)
+  sendMail <- let approximateEditorCount = 680000
+                  day = 24 * 60 * 60.0
+              in RateLimit.rateLimit (approximateEditorCount / day)
+                   Mail.renderSendMail
 
   heist <- Mailer.loadTemplates
-  Mailer.consumeOutbox rabbitMqConn heist $
-    Mail.renderSendMail >=> const rateLimit
+  Mailer.consumeOutbox rabbitMqConn heist sendMail
 
   void $ forever getLine
