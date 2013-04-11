@@ -10,7 +10,7 @@ import Control.Applicative ((<$>))
 import Control.Exception (bracket)
 import Control.Monad (replicateM)
 import Control.Monad.IO.Class (liftIO)
-import qualified Control.Concurrent.Chan as Chan
+import qualified Control.Concurrent.STM.TChan as TChan
 import Data.Monoid (mempty)
 
 import Database.PostgreSQL.Simple.SqlQQ (sql)
@@ -18,6 +18,7 @@ import Database.PostgreSQL.Simple.SqlQQ (sql)
 
 --------------------------------------------------------------------------------
 import qualified Control.Error as Error
+import qualified Control.Concurrent.STM as STM
 import qualified Data.Aeson as Aeson
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as LBS
@@ -59,20 +60,66 @@ main = Tests.defaultMain [ enqueuePasswordResets
 --------------------------------------------------------------------------------
 enqueuePasswordResets :: Tests.Test
 enqueuePasswordResets = withTimeOut $
-  Tests.testCase "Will send password reset emails to editors" $
-    withRabbitMq $ \(rabbitMq, _) -> do
-      pg <- PG.connect testPg
+  Tests.testGroup "Enqueueing password reset emails"
+    [ Tests.testCase "Will send password reset emails to editors with old login date and confirmed email address" $
+        withRabbitMq $ \(rabbitMq, _) -> do
+          pg <- emptyPg
 
-      insertTestData pg
+          PG.execute pg
+            [sql| INSERT INTO editor (name, password, email, email_confirm_date)
+                  VALUES (?, 'ignored', ?, '2010-01-01') |]
+            ( Email.passwordResetEditor $ Email.emailTemplate expected
+            , Mail.addressEmail $ Email.emailTo expected
+            )
 
-      sentMessages <- spyQueue rabbitMq Email.outboxQueue
+          sentMessages <- spyQueue rabbitMq Email.outboxQueue
 
-      liftIO (Enqueue.run (Enqueue.Options (Enqueue.PasswordReset testPg) testRabbitSettings))
+          liftIO (Enqueue.run (Enqueue.Options (Enqueue.PasswordReset testPg) testRabbitSettings))
 
-      sentMessage <- Chan.readChan sentMessages
-      (Aeson.decode (AMQP.msgBody sentMessage)) @?= Just expected
+          sentMessage <- STM.atomically $ TChan.readTChan sentMessages
+          (Aeson.decode (AMQP.msgBody sentMessage)) @?= Just expected
+
+    , Tests.testCase "Will not send to editors with unconfirmed email address" $
+        withRabbitMq $ \(rabbitMq, _) -> do
+          pg <- emptyPg
+
+          PG.execute pg
+            [sql| INSERT INTO editor (name, password, email, email_confirm_date)
+                  VALUES (?, 'ignored', ?, null) |]
+            ( Email.passwordResetEditor $ Email.emailTemplate expected
+            , Mail.addressEmail $ Email.emailTo expected
+            )
+
+          expectNoSentMessages rabbitMq
+
+    , Tests.testCase "Will not send to editors who logged in recently" $
+        withRabbitMq $ \(rabbitMq, _) -> do
+          pg <- emptyPg
+
+          PG.execute pg
+            [sql| INSERT INTO editor (name, password, email, email_confirm_date, last_login_date)
+                  VALUES (?, 'ignored', ?, now(), '2013-04-29') |]
+            ( Email.passwordResetEditor $ Email.emailTemplate expected
+            , Mail.addressEmail $ Email.emailTo expected
+            )
+
+          expectNoSentMessages rabbitMq
+    ]
 
  where
+
+  expectNoSentMessages rabbitMq = do
+    sentMessages <- spyQueue rabbitMq Email.outboxQueue
+
+    liftIO (Enqueue.run (Enqueue.Options (Enqueue.PasswordReset testPg) testRabbitSettings))
+
+    (STM.atomically $ TChan.isEmptyTChan sentMessages)
+      @? "No emails should have been sent"
+
+  emptyPg = do
+    pg <- PG.connect testPg
+    PG.execute_ pg "TRUNCATE editor CASCADE"
+    return pg
 
   expected = Email.Email
     { Email.emailTo = Mail.Address { Mail.addressEmail = "ollie@ocharles.org.uk"
@@ -91,15 +138,6 @@ enqueuePasswordResets = withTimeOut $
                           , PG.connectDatabase = "musicbrainz_test"
                           , PG.connectHost = "localhost"
                           }
-
-  insertTestData pg = do
-    PG.execute_ pg "TRUNCATE editor CASCADE"
-    PG.execute pg
-      [sql| INSERT INTO editor (name, password, email, email_confirm_date)
-            VALUES (?, 'ignored', ?, '2010-01-01') |]
-      ( Email.passwordResetEditor $ Email.emailTemplate expected
-      , Mail.addressEmail $ Email.emailTo expected
-      )
 
 
 --------------------------------------------------------------------------------
@@ -158,13 +196,14 @@ messagesAreSent = withTimeOut $
     withRabbitMq $ \(rabbitMq, rabbitMqConn) -> do
       heist <- Mailer.loadTemplates
 
-      sentEmails <- Chan.newChan
-      Mailer.consumeOutbox rabbitMqConn heist $ Chan.writeChan sentEmails
+      sentEmails <- STM.atomically $ TChan.newTChan
+      Mailer.consumeOutbox rabbitMqConn heist $
+        STM.atomically . TChan.writeTChan sentEmails
 
       AMQP.publishMsg rabbitMq Email.outboxExchange ""
         AMQP.newMsg { AMQP.msgBody = Aeson.encode testEmail }
 
-      sentEmail <- Chan.readChan sentEmails
+      sentEmail <- STM.atomically $ TChan.readTChan sentEmails
       Just sentEmail @?= Mailer.emailToMail testEmail heist
 
 
@@ -196,7 +235,7 @@ invalidMessageRouting = withTimeOut $
       AMQP.publishMsg rabbitMq Email.outboxExchange ""
         AMQP.newMsg { AMQP.msgBody = invalidRequest }
 
-      invalidMessage <- Chan.readChan invalidMessages
+      invalidMessage <- STM.atomically $ TChan.readTChan invalidMessages
       AMQP.msgBody invalidMessage @?= invalidRequest
 
  where
@@ -217,7 +256,7 @@ sendMailFailureRouting = withTimeOut $
       AMQP.publishMsg rabbitMq Email.outboxExchange ""
         AMQP.newMsg { AMQP.msgBody = Aeson.encode testEmail }
 
-      unroutableMessage <- Chan.readChan unroutableMessages
+      unroutableMessage <- STM.atomically $ TChan.readTChan unroutableMessages
       Aeson.decode (AMQP.msgBody unroutableMessage)
         @?= Just (Aeson.object [ "error" .= errorMessage
                                , "email" .= Aeson.encode testEmail
@@ -242,7 +281,7 @@ heistFailureRouting = withTimeOut $
       AMQP.publishMsg rabbitMq Email.outboxExchange ""
         AMQP.newMsg { AMQP.msgBody = Aeson.encode testEmail }
 
-      unroutableMessage <- Chan.readChan unroutableMessages
+      unroutableMessage <- STM.atomically $ TChan.readTChan unroutableMessages
       Aeson.decode (AMQP.msgBody unroutableMessage)
         @?= Just testEmail
 
@@ -284,12 +323,12 @@ withTimeOut =
 --------------------------------------------------------------------------------
 spyQueue :: AMQP.Channel
          -> String
-         -> IO (Chan.Chan AMQP.Message)
+         -> IO (TChan.TChan AMQP.Message)
 spyQueue rabbitMq queue = do
-  sentMessages <- Chan.newChan
+  sentMessages <- STM.atomically $ TChan.newTChan
 
   AMQP.consumeMsgs rabbitMq queue AMQP.NoAck $ \(message, _) ->
-    Chan.writeChan sentMessages message
+    STM.atomically $ TChan.writeTChan sentMessages message
 
   return sentMessages
 
