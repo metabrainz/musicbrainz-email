@@ -39,6 +39,7 @@ executable musicbrainz-emailer
     mime-mail >= 0.4.1.2,
     musicbrainz-email == 0.1.0.0,
     mtl >= 0.3.0.0,
+    network-metrics >= 0.3.1,
     text >= 0.11,
     time >= 1.4,
     transformers >= 0.2.2.0,
