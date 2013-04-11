@@ -67,7 +67,7 @@ enqueuePasswordResets = withTimeOut $
 
       sentMessages <- spyQueue rabbitMq Email.outboxQueue
 
-      liftIO (Enqueue.run (Enqueue.Options (Enqueue.GoPasswordReset testPg) testRabbitSettings))
+      liftIO (Enqueue.run (Enqueue.Options (Enqueue.PasswordReset testPg) testRabbitSettings))
 
       sentMessage <- Chan.readChan sentMessages
       (Aeson.decode (AMQP.msgBody sentMessage)) @?= Just expected

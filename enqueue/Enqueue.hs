@@ -3,7 +3,6 @@
 module Enqueue where
 
 --------------------------------------------------------------------------------
-import qualified Data.Aeson as Aeson
 import qualified Database.PostgreSQL.Simple as PG
 import qualified Network.AMQP as AMQP
 import qualified Network.Mail.Mime as Mail
@@ -16,7 +15,7 @@ import qualified MusicBrainz.Messaging as Messaging
 
 
 --------------------------------------------------------------------------------
-data Command = GoPasswordReset PG.ConnectInfo
+data Command = PasswordReset PG.ConnectInfo
 
 
 --------------------------------------------------------------------------------
@@ -25,7 +24,7 @@ data Options = Options Command Messaging.RabbitMQConnection
 
 --------------------------------------------------------------------------------
 evaluateCommand :: Command -> IO [Email.Email]
-evaluateCommand (GoPasswordReset connInfo) = do
+evaluateCommand (PasswordReset connInfo) = do
   pg <- PG.connect connInfo
 
   PG.fold_ pg editorsWithEmailAddresses [] go
@@ -57,13 +56,4 @@ evaluateCommand (GoPasswordReset connInfo) = do
 run :: Options -> IO ()
 run (Options command r) = do
   rabbitMq <- Messaging.connect r >>= AMQP.openChannel
-  evaluateCommand command >>= mapM_ (enqueueEmail rabbitMq)
-
- where
-
-  enqueueEmail rabbitMq email =
-    AMQP.publishMsg rabbitMq Email.outboxExchange ""
-      AMQP.newMsg
-        { AMQP.msgBody = Aeson.encode email
-        , AMQP.msgDeliveryMode = Just AMQP.Persistent
-        }
+  evaluateCommand command >>= mapM_ (Email.enqueueEmail rabbitMq)

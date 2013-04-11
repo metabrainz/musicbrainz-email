@@ -20,6 +20,7 @@ library
     base >= 4.5 && < 4.7,
     ghc-prim,
     mime-mail >= 0.4.1.2,
+    optparse-applicative >= 0.5,
     text >= 0.11
   ghc-options: -Wall -fwarn-tabs -funbox-strict-fields -O2
                -fno-warn-orphans -fno-warn-unused-do-bind
@@ -46,7 +47,7 @@ executable musicbrainz-emailer
                -fno-warn-orphans -fno-warn-unused-do-bind
                -Werror
 
-executable enqueue-mass-mail
+executable enqueue-mail
   hs-source-dirs: enqueue
   main-is: Main.hs
   build-depends:
@@ -57,6 +58,19 @@ executable enqueue-mass-mail
     musicbrainz-email == 0.1.0.0,
     optparse-applicative >= 0.5,
     postgresql-simple >= 0.2
+  ghc-options: -Wall -fwarn-tabs -funbox-strict-fields -O2
+               -fno-warn-orphans -fno-warn-unused-do-bind
+               -Werror
+
+executable retry-mail
+  hs-source-dirs: retry-mail
+  main-is: Main.hs
+  build-depends:
+    aeson >= 0.6.1.0,
+    amqp >= 0.3.3,
+    base >= 4.5 && < 4.7,
+    musicbrainz-email == 0.1.0.0,
+    optparse-applicative >= 0.5
   ghc-options: -Wall -fwarn-tabs -funbox-strict-fields -O2
                -fno-warn-orphans -fno-warn-unused-do-bind
                -Werror

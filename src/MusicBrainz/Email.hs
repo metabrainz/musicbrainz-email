@@ -19,6 +19,9 @@ module MusicBrainz.Email
     , outboxQueue
     , invalidQueue
     , unroutableQueue
+
+      -- * Queueing emails
+    , enqueueEmail
     ) where
 
 --------------------------------------------------------------------------------
@@ -101,3 +104,13 @@ establishRabbitMqConfiguration rabbitMq = do
   AMQP.bindQueue rabbitMq outboxQueue outboxExchange ""
   AMQP.bindQueue rabbitMq invalidQueue failureExchange invalidKey
   AMQP.bindQueue rabbitMq unroutableQueue failureExchange unroutableKey
+
+
+--------------------------------------------------------------------------------
+enqueueEmail :: AMQP.Channel -> Email -> IO ()
+enqueueEmail rabbitMq email =
+  AMQP.publishMsg rabbitMq outboxExchange ""
+    AMQP.newMsg
+      { AMQP.msgBody = Aeson.encode email
+      , AMQP.msgDeliveryMode = Just AMQP.Persistent
+      }
