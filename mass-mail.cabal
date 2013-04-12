@@ -89,7 +89,7 @@ test-suite tests
     mtl >= 0.3.0.0,
     musicbrainz-email == 0.1.0.0,
     postgresql-simple >= 0.2,
-    smallcheck == 1.0,
+    smallcheck >= 1.0.1,
     stm,
     test-framework >= 0.8,
     test-framework-hunit >= 0.3,
