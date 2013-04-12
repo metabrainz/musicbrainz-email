@@ -6,12 +6,13 @@
 module Main (main) where
 
 --------------------------------------------------------------------------------
-import Control.Applicative ((<$>))
+import Control.Applicative ((<$>), (<*>))
 import Control.Exception (bracket)
 import Control.Monad (replicateM)
 import Control.Monad.IO.Class (liftIO)
 import qualified Control.Concurrent.STM.TChan as TChan
 import Data.Monoid (mempty)
+import System.IO.Error (catchIOError, isDoesNotExistError)
 
 import Database.PostgreSQL.Simple.SqlQQ (sql)
 
@@ -22,6 +23,7 @@ import qualified Control.Concurrent.STM as STM
 import qualified Data.Aeson as Aeson
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as LBS
+import qualified Data.Configurator as Configurator
 import qualified Data.Text as Text
 import qualified Data.Text.Encoding as Encoding
 import qualified Data.Time as Time
@@ -47,22 +49,44 @@ import qualified MusicBrainz.Messaging as Messaging
 
 --------------------------------------------------------------------------------
 main :: IO ()
-main = Tests.defaultMain [ enqueuePasswordResets
-                         , expandTemplates
-                         , messagesAreSent
-                         , invalidMessageRouting
-                         , sendMailFailureRouting
-                         , heistFailureRouting
-                         , rateLimitTests
-                         ]
+main = do
+  testConfig <- Configurator.load [ Configurator.Required "test.cfg" ]
+                 `catchIOError`
+                  (\e -> if isDoesNotExistError e
+                           then error "test.cfg not found. Please add a test.cfg file, see test.cfg.example for more information."
+                           else ioError e)
+
+  let opt key def = Configurator.lookupDefault (def PG.defaultConnectInfo) testConfig key
+  pgConf <- PG.ConnectInfo
+    <$> opt "db.host" PG.connectHost
+    <*> opt "db.port" PG.connectPort
+    <*> opt "db.user" PG.connectUser
+    <*> opt "db.password" PG.connectPassword
+    <*> opt "db.database" PG.connectDatabase
+
+  rabbitMqConf <- Messaging.RabbitMQConnection
+    <$> Configurator.require testConfig "rabbitmq.host"
+    <*> Configurator.require testConfig "rabbitmq.vhost"
+    <*> Configurator.require testConfig "rabbitmq.user"
+    <*> Configurator.require testConfig "rabbitmq.password"
+
+  Tests.defaultMain $ map withTimeOut $
+    [ enqueuePasswordResets pgConf rabbitMqConf
+    , expandTemplates
+    , messagesAreSent rabbitMqConf
+    , invalidMessageRouting rabbitMqConf
+    , sendMailFailureRouting rabbitMqConf
+    , heistFailureRouting rabbitMqConf
+    , rateLimitTests
+    ]
 
 
 --------------------------------------------------------------------------------
-enqueuePasswordResets :: Tests.Test
-enqueuePasswordResets = withTimeOut $
+enqueuePasswordResets :: PG.ConnectInfo -> Messaging.RabbitMQConnection -> Tests.Test
+enqueuePasswordResets pgConf rabbitConf = withTimeOut $
   Tests.testGroup "Enqueueing password reset emails"
     [ Tests.testCase "Will send password reset emails to editors with old login date and confirmed email address" $
-        withRabbitMq $ \(rabbitMq, _) -> do
+        withRabbitMq rabbitConf $ \(rabbitMq, _) -> do
           pg <- emptyPg
 
           PG.execute pg
@@ -74,13 +98,13 @@ enqueuePasswordResets = withTimeOut $
 
           sentMessages <- spyQueue rabbitMq Email.outboxQueue
 
-          liftIO (Enqueue.run (Enqueue.Options (Enqueue.PasswordReset testPg) testRabbitSettings))
+          liftIO (Enqueue.run (Enqueue.Options (Enqueue.PasswordReset pgConf) rabbitConf))
 
           sentMessage <- STM.atomically $ TChan.readTChan sentMessages
           (Aeson.decode (AMQP.msgBody sentMessage)) @?= Just expected
 
     , Tests.testCase "Will not send to editors with unconfirmed email address" $
-        withRabbitMq $ \(rabbitMq, _) -> do
+        withRabbitMq rabbitConf $ \(rabbitMq, _) -> do
           pg <- emptyPg
 
           PG.execute pg
@@ -93,7 +117,7 @@ enqueuePasswordResets = withTimeOut $
           expectNoSentMessages rabbitMq
 
     , Tests.testCase "Will not send to editors who logged in recently" $
-        withRabbitMq $ \(rabbitMq, _) -> do
+        withRabbitMq rabbitConf $ \(rabbitMq, _) -> do
           pg <- emptyPg
 
           PG.execute pg
@@ -111,13 +135,13 @@ enqueuePasswordResets = withTimeOut $
   expectNoSentMessages rabbitMq = do
     sentMessages <- spyQueue rabbitMq Email.outboxQueue
 
-    liftIO (Enqueue.run (Enqueue.Options (Enqueue.PasswordReset testPg) testRabbitSettings))
+    liftIO (Enqueue.run (Enqueue.Options (Enqueue.PasswordReset pgConf) rabbitConf))
 
     (STM.atomically $ TChan.isEmptyTChan sentMessages)
       @? "No emails should have been sent"
 
   emptyPg = do
-    pg <- PG.connect testPg
+    pg <- PG.connect pgConf
     PG.execute_ pg "TRUNCATE editor CASCADE"
     return pg
 
@@ -131,13 +155,6 @@ enqueuePasswordResets = withTimeOut $
     , Email.emailTemplate =
         Email.PasswordReset { Email.passwordResetEditor = "ocharles" }
     }
-
-  testPg = PG.ConnectInfo { PG.connectUser = "musicbrainz"
-                          , PG.connectPassword = ""
-                          , PG.connectPort = 5432
-                          , PG.connectDatabase = "musicbrainz_test"
-                          , PG.connectHost = "localhost"
-                          }
 
 
 --------------------------------------------------------------------------------
@@ -190,10 +207,10 @@ deriving instance Show Mail.Mail
 deriving instance Eq Mail.Part
 deriving instance Show Mail.Part
 
-messagesAreSent :: Tests.Test
-messagesAreSent = withTimeOut $
+messagesAreSent :: Messaging.RabbitMQConnection -> Tests.Test
+messagesAreSent rabbitConf = withTimeOut $
   Tests.testCase "Emails in outbox are sent by outbox consumer" $ do
-    withRabbitMq $ \(rabbitMq, rabbitMqConn) -> do
+    withRabbitMq rabbitConf $ \(rabbitMq, rabbitMqConn) -> do
       heist <- Mailer.loadTemplates
 
       sentEmails <- STM.atomically $ TChan.newTChan
@@ -223,10 +240,10 @@ testEmail = Email.Email
 
 
 --------------------------------------------------------------------------------
-invalidMessageRouting :: Tests.Test
-invalidMessageRouting = withTimeOut $
+invalidMessageRouting :: Messaging.RabbitMQConnection -> Tests.Test
+invalidMessageRouting rabbitConf = withTimeOut $
   Tests.testCase "Unparsable emails are forwarded to outbox.invalid" $ do
-    withRabbitMq $ \(rabbitMq, rabbitMqConn) -> do
+    withRabbitMq rabbitConf $ \(rabbitMq, rabbitMqConn) -> do
       invalidMessages <- spyQueue rabbitMq Email.invalidQueue
 
       heist <- Mailer.loadTemplates
@@ -244,10 +261,10 @@ invalidMessageRouting = withTimeOut $
 
 
 --------------------------------------------------------------------------------
-sendMailFailureRouting :: Tests.Test
-sendMailFailureRouting = withTimeOut $
+sendMailFailureRouting :: Messaging.RabbitMQConnection -> Tests.Test
+sendMailFailureRouting rabbitConf = withTimeOut $
   Tests.testCase "If sendmail doesn't exit cleanly, messages are forwarded to outbox.unroutable" $ do
-    withRabbitMq $ \(rabbitMq, rabbitMqConn) -> do
+    withRabbitMq rabbitConf $ \(rabbitMq, rabbitMqConn) -> do
       unroutableMessages <- spyQueue rabbitMq Email.unroutableQueue
 
       heist <- Mailer.loadTemplates
@@ -268,10 +285,10 @@ sendMailFailureRouting = withTimeOut $
 
 
 --------------------------------------------------------------------------------
-heistFailureRouting :: Tests.Test
-heistFailureRouting = withTimeOut $
+heistFailureRouting :: Messaging.RabbitMQConnection -> Tests.Test
+heistFailureRouting rabbitConf = withTimeOut $
   Tests.testCase "If Heist can't expand the template, messages are forwarded to outbox.unroutable" $ do
-    withRabbitMq $ \(rabbitMq, rabbitMqConn) -> do
+    withRabbitMq rabbitConf $ \(rabbitMq, rabbitMqConn) -> do
       unroutableMessages <- spyQueue rabbitMq Email.unroutableQueue
 
       -- A 'Heist' that doesn't know about any of the templates
@@ -287,12 +304,12 @@ heistFailureRouting = withTimeOut $
 
 
 --------------------------------------------------------------------------------
-withRabbitMq :: ((AMQP.Channel, AMQP.Connection) -> IO a) -> IO a
-withRabbitMq = bracket acquire release
+withRabbitMq :: Messaging.RabbitMQConnection -> ((AMQP.Channel, AMQP.Connection) -> IO a) -> IO a
+withRabbitMq rabbitConf = bracket acquire release
  where
 
   acquire = do
-    rabbitMqConn <- Messaging.connect testRabbitSettings
+    rabbitMqConn <- Messaging.connect rabbitConf
     rabbitMq <- AMQP.openChannel rabbitMqConn
     Email.establishRabbitMqConfiguration rabbitMq
 
@@ -301,17 +318,6 @@ withRabbitMq = bracket acquire release
     return (rabbitMq, rabbitMqConn)
 
   release (_, conn) = AMQP.closeConnection conn
-
-
---------------------------------------------------------------------------------
-testRabbitSettings :: Messaging.RabbitMQConnection
-testRabbitSettings =
-  Messaging.RabbitMQConnection
-    { Messaging.rabbitHost = "127.0.0.1"
-    , Messaging.rabbitVHost = "/test/email"
-    , Messaging.rabbitUser = "guest"
-    , Messaging.rabbitPassword = "guest"
-    }
 
 
 --------------------------------------------------------------------------------

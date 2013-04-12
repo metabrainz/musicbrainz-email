@@ -78,6 +78,14 @@ can be added with:
 
     sudo -u rabbitmq rabbitmqctl add_vhost '/test/email'
 
+Also, be sure to make sure your user has permissions to use this vhost! For
+example,
+
+    sudo -u rabbitmq rabbitmqctl set_permissions -p '/test/email' guest '.*' '.*' '.*'
+
+Now copy `test.cfg.example` to `test.cfg` and edit to match your test
+environment.
+
 We use Cabal to run tests. To run all tests, run
 
     cabal test
