@@ -3,7 +3,7 @@
 module Main (main) where
 
 --------------------------------------------------------------------------------
-import Control.Applicative ((<$>), (<*>), (<**>))
+import Control.Applicative ((<$>), (<*>), (<**>), pure)
 import Data.Monoid (mconcat, mempty)
 
 
@@ -32,7 +32,24 @@ main = Optparse.execParser parser >>= Enqueue.run
     commands = [ Optparse.command "password-reset" $
                    Optparse.info (Enqueue.PasswordReset <$> dbOptions <**> Optparse.helper)
                      (Optparse.progDesc "Send mandatory password reset emails")
+
+               , Optparse.command "retry" $
+                   Optparse.info (Enqueue.Retry <$> Optparse.subparser (mconcat retryCommand)
+                                                <**> Optparse.helper)
+                     (Optparse.progDesc "Retry sending failed or unroutable emails")
                ]
+
+    retryCommand = [ Optparse.command "unroutable" $
+                       Optparse.info (pure [Enqueue.Unroutable] <**> Optparse.helper)
+                         (Optparse.progDesc "Retry all unroutable emails")
+                   , Optparse.command "invalid" $
+                       Optparse.info (pure [Enqueue.Invalid] <**> Optparse.helper)
+                         (Optparse.progDesc "Retry all invalid emails")
+                   , Optparse.command "everything" $
+                       Optparse.info (pure [Enqueue.Invalid, Enqueue.Unroutable]
+                                        <**> Optparse.helper)
+                         (Optparse.progDesc "Retry all invalid or unroutable emails")
+                   ]
 
     dbOptions =
       PG.ConnectInfo
@@ -56,3 +73,5 @@ main = Optparse.execParser parser >>= Enqueue.run
                                         , Optparse.help "Name of the MusicBrainz database in PostgreSQL"
                                         , Optparse.value "musicbrainz"
                                         ])
+
+
