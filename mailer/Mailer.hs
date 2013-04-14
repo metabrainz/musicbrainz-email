@@ -27,6 +27,7 @@ import qualified Text.XmlHtml as XmlHtml
 
 --------------------------------------------------------------------------------
 import qualified MusicBrainz.Email as Email
+import qualified Paths_musicbrainz_email as Email
 
 
 --------------------------------------------------------------------------------
@@ -116,6 +117,8 @@ consumeOutbox rabbitMqConn heist sendMail = do
 
 --------------------------------------------------------------------------------
 loadTemplates :: Monad m => IO (Heist.HeistState m)
-loadTemplates = fmap (either (error . show) id) $ Error.runEitherT $ do
-    templateRepo <- Heist.loadTemplates "templates"
+loadTemplates = fmap (either (error . show) id) $ do
+  templatesDir <- Email.getDataFileName "templates"
+  Error.runEitherT $ do
+    templateRepo <- Heist.loadTemplates templatesDir
     Heist.initHeist mempty { Heist.hcTemplates = templateRepo }
