@@ -4,11 +4,11 @@ module Main (main) where
 
 --------------------------------------------------------------------------------
 import Control.Applicative ((<$>), (<*>), (<**>))
-import Control.Monad (forever, void)
 import Data.Monoid (mconcat, mempty)
 
 
 --------------------------------------------------------------------------------
+import qualified Control.Concurrent.MVar as MVar
 import qualified Network.AMQP as AMQP
 import qualified Network.Mail.Mime as Mail
 import qualified Network.Metric as Metrics
@@ -52,7 +52,7 @@ run (Options rabbitMqConf Statsd {..}) = do
   heist <- Mailer.loadTemplates
   Mailer.consumeOutbox rabbitMqConn heist sendMail
 
-  void $ forever getLine
+  MVar.newEmptyMVar >>= MVar.takeMVar
 
 
 --------------------------------------------------------------------------------
