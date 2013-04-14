@@ -276,7 +276,7 @@ sendMailFailureRouting rabbitConf = withTimeOut $
       unroutableMessage <- STM.atomically $ TChan.readTChan unroutableMessages
       Aeson.decode (AMQP.msgBody unroutableMessage)
         @?= Just (Aeson.object [ "error" .= errorMessage
-                               , "email" .= Aeson.encode testEmail
+                               , "email" .= testEmail
                                ])
 
  where
@@ -300,7 +300,10 @@ heistFailureRouting rabbitConf = withTimeOut $
 
       unroutableMessage <- STM.atomically $ TChan.readTChan unroutableMessages
       Aeson.decode (AMQP.msgBody unroutableMessage)
-        @?= Just testEmail
+        @?= Just (Aeson.object
+                    [ "email" .= testEmail
+                    , "error" .= ("Couldn't render template" :: String)
+                    ])
 
 
 --------------------------------------------------------------------------------

@@ -97,18 +97,21 @@ consumeOutbox rabbitMqConn heist sendMail = do
 
    where
 
+    failureMessage e =
+      AMQP.newMsg { AMQP.msgBody = Aeson.encode $ Aeson.object
+                      [ "email" .= email
+                      , "error" .= (e :: Text.Text)
+                      ]
+                  }
+
     tryFormEmail =
-      let failureMessage = AMQP.newMsg { AMQP.msgBody = Aeson.encode email }
-      in Error.EitherT $ return $
-           Error.note failureMessage $ emailToMail email heist
+      Error.EitherT $ return $
+        Error.note (failureMessage "Couldn't render template") $
+          emailToMail email heist
 
     trySend mail =
-      let exceptionMessage e = AMQP.newMsg
-            { AMQP.msgBody = Aeson.encode $ Aeson.object
-                [ "email" .= Aeson.encode email
-                , "error" .= Text.pack (show (e :: SomeException))
-                ]
-            }
+      let exceptionMessage e =
+            failureMessage (Text.pack (show (e :: SomeException)))
       in Error.bimapEitherT exceptionMessage id $
            Error.EitherT $ try (sendMail mail)
 
