@@ -255,7 +255,10 @@ invalidMessageRouting rabbitConf = withTimeOut $
         AMQP.newMsg { AMQP.msgBody = invalidRequest }
 
       invalidMessage <- STM.atomically $ TChan.readTChan invalidMessages
-      AMQP.msgBody invalidMessage @?= invalidRequest
+      Aeson.decode (AMQP.msgBody invalidMessage) @?=
+        Just (Aeson.object [ "error" .= ("Could not decode JSON" :: String)
+                           , "json" .= invalidRequest
+                           ])
 
  where
 
