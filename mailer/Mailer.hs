@@ -61,7 +61,7 @@ emailToMail email heist = runIdentity $
     , Mail.mailCc = []
     , Mail.mailBcc = []
     , Mail.mailHeaders = [("Subject", emailSubject)]
-    , Mail.mailParts = [ [ Mail.Part { Mail.partType = "text/plain"
+    , Mail.mailParts = [ [ Mail.Part { Mail.partType = "text/plain; charset=UTF-8"
                                      , Mail.partEncoding = Mail.None
                                      , Mail.partFilename = Nothing
                                      , Mail.partHeaders = []
