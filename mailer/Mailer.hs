@@ -90,7 +90,7 @@ consumeOutbox rabbitMqConn heist sendMail = do
   void $ AMQP.consumeMsgs rabbitMq Email.outboxQueue AMQP.Ack $
     \(msg, env) -> do
       maybe
-        (publishFailure rabbitMq Email.invalidKey msg)
+        (publishFailure rabbitMq Email.invalidKey (unableToDecode msg))
         (Error.eitherT (publishFailure rabbitMq Email.unroutableKey) return .
            trySendEmail)
         (Aeson.decode $ AMQP.msgBody msg)
@@ -98,6 +98,13 @@ consumeOutbox rabbitMqConn heist sendMail = do
       AMQP.ackEnv env
 
  where
+
+  unableToDecode msg =
+    AMQP.newMsg { AMQP.msgBody = Aeson.encode $ Aeson.object
+                   [ "error" .= ("Could not decode JSON" :: String)
+                   , "json" .= AMQP.msgBody msg
+                   ]
+                }
 
   trySendEmail email = tryFormEmail >>= trySend
 
