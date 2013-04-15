@@ -20,7 +20,7 @@ such, we require that all users change their password as soon as possible.
 The next time you login to the website, you will be requested to change your
 password. Alternatively, you can go to the following link:
 
-    https://musicbrainz.org/account/change-password?mandatory=1&username=<editor />
+    https://musicbrainz.org/account/change-password?mandatory=1&username=<urlEncode><editor /></urlEncode>
 
 Users should also note that access to authenticated web service calls, for
 example to manage tags and ratings via Picard, are also blocked until passwords

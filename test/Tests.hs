@@ -30,6 +30,7 @@ import qualified Data.Time as Time
 import qualified Database.PostgreSQL.Simple as PG
 import qualified Heist
 import qualified Network.AMQP as AMQP
+import qualified Network.HTTP as HTTP
 import qualified Network.Mail.Mime as Mail
 import qualified Test.SmallCheck.Series as SmallCheck
 import qualified Test.Framework as Tests
@@ -192,7 +193,8 @@ expandTemplates = Tests.buildTest $ do
  where
 
   changePasswordUrl =
-    Text.append "https://musicbrainz.org/account/change-password?mandatory=1&username="
+    Text.append "https://musicbrainz.org/account/change-password?mandatory=1&username=" .
+      Text.pack . HTTP.urlEncode . Text.unpack
 
   greeting = Text.append "Dear "
 

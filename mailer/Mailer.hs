@@ -22,6 +22,7 @@ import qualified Data.Text as Text
 import qualified Heist as Heist
 import qualified Heist.Interpreted as Heist
 import qualified Network.AMQP as AMQP
+import qualified Network.HTTP as HTTP
 import qualified Network.Mail.Mime as Mail
 import qualified Text.XmlHtml as XmlHtml
 
@@ -36,9 +37,14 @@ emailToMail email heist = runIdentity $
   Heist.evalHeistT
     mailBuilder
     (XmlHtml.TextNode "")
-    (Heist.bindStrings templateBindings heist)
+    (Heist.bindSplice "urlEncode" urlEncode $
+     Heist.bindStrings templateBindings heist)
 
  where
+
+  urlEncode =
+    map (XmlHtml.TextNode . Text.pack . HTTP.urlEncode . Text.unpack . XmlHtml.nodeText)
+      <$> Heist.runChildren
 
   mailBuilder = fmap (makeMail . runTemplate) <$> Heist.evalTemplate templatePath
 
