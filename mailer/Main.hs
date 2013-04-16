@@ -74,7 +74,7 @@ main = Optparse.execParser parser >>= run
       <$> Optparse.strOption (mconcat [ Optparse.long "statsd-host"
                                       , Optparse.help "Statsd host"
                                       ])
-      <*> fmap Socket.PortNum
+      <*> fmap fromInteger
             (Optparse.option (mconcat [ Optparse.long "statsd-port"
                                       , Optparse.value 8125
                                       , Optparse.help "Statsd port"
