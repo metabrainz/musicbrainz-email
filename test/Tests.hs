@@ -91,8 +91,8 @@ enqueuePasswordResets pgConf rabbitConf = withTimeOut $
           pg <- emptyPg
 
           PG.execute pg
-            [sql| INSERT INTO editor (name, password, email, email_confirm_date)
-                  VALUES (?, 'ignored', ?, '2010-01-01') |]
+            [sql| INSERT INTO editor (name, password, email, email_confirm_date, last_login_date)
+                  VALUES (?, 'ignored', ?, '2010-01-01', '2010-01-01') |]
             ( Email.passwordResetEditor $ Email.emailTemplate expected
             , Mail.addressEmail $ Email.emailTo expected
             )
@@ -109,8 +109,8 @@ enqueuePasswordResets pgConf rabbitConf = withTimeOut $
           pg <- emptyPg
 
           PG.execute pg
-            [sql| INSERT INTO editor (name, password, email, email_confirm_date)
-                  VALUES (?, 'ignored', ?, null) |]
+            [sql| INSERT INTO editor (name, password, email, email_confirm_date, last_login_date)
+                  VALUES (?, 'ignored', ?, null, '2010-01-01') |]
             ( Email.passwordResetEditor $ Email.emailTemplate expected
             , Mail.addressEmail $ Email.emailTo expected
             )
