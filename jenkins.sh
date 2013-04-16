@@ -37,4 +37,4 @@ rabbitmq {
 }
 EOF
 
-cabal test --test-option='--jxml=junit.xml' --test-option '-j5'
+cabal test --test-option='--jxml=junit.xml'
