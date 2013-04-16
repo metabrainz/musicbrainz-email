@@ -4,7 +4,8 @@ module Main (main) where
 
 --------------------------------------------------------------------------------
 import Control.Applicative ((<$>), (<*>), (<**>))
-import Control.Monad (void)
+import Control.Concurrent (threadDelay)
+import Control.Monad (forever)
 import Data.Monoid (mconcat, mempty)
 import System.IO.Error (catchIOError)
 
@@ -53,7 +54,7 @@ run (Options rabbitMqConf Statsd {..}) = do
   heist <- Mailer.loadTemplates
   Mailer.consumeOutbox rabbitMqConn heist sendMail
 
-  void getLine
+  forever (threadDelay 1000000)
 
 
 --------------------------------------------------------------------------------
