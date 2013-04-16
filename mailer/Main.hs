@@ -5,6 +5,7 @@ module Main (main) where
 --------------------------------------------------------------------------------
 import Control.Applicative ((<$>), (<*>), (<**>))
 import Data.Monoid (mconcat, mempty)
+import System.IO.Error (catchIOError)
 
 
 --------------------------------------------------------------------------------
@@ -46,8 +47,8 @@ run (Options rabbitMqConf Statsd {..}) = do
               in RateLimit.rateLimit (approximateEditorCount / day) $
                    \mail -> do
                      Mail.renderSendMail mail
-                     Metrics.push statsd $
-                       Metrics.Counter "email" "sent" 1
+                     Metrics.push statsd (Metrics.Counter "email" "sent" 1)
+                       `catchIOError` (const $ putStrLn "Couldn't write to statsd")
 
   heist <- Mailer.loadTemplates
   Mailer.consumeOutbox rabbitMqConn heist sendMail
