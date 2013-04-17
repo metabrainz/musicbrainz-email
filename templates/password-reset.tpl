@@ -22,6 +22,10 @@ password. Alternatively, you can go to the following link:
 
     https://musicbrainz.org/account/change-password?mandatory=1&username=<urlEncode><editor /></urlEncode>
 
+If you have forgotten your password, you can request a new one by visiting
+
+    https://musicbrainz.org/lost-password
+
 Users should also note that access to authenticated web service calls, for
 example to manage tags and ratings via Picard, are also blocked until passwords
 are changed. If you are finding that software that uses MusicBrainz is not

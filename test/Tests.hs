@@ -182,6 +182,7 @@ expandTemplates = Tests.buildTest $ do
                     map (flip Text.isInfixOf emailBody)
                       [ changePasswordUrl editor
                       , greeting editor
+                      , "https://musicbrainz.org/lost-password"
                       ]
     ]
 
