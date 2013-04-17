@@ -44,6 +44,7 @@ executable musicbrainz-emailer
     network,
     network-metrics >= 0.3.1,
     optparse-applicative >= 0.5,
+    postgresql-simple >= 0.2,
     text >= 0.11,
     time >= 1.4,
     transformers >= 0.2.2.0,

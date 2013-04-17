@@ -74,10 +74,10 @@ main = do
   Tests.defaultMain $ map withTimeOut $
     [ enqueuePasswordResets pgConf rabbitMqConf
     , expandTemplates
-    , messagesAreSent rabbitMqConf
-    , invalidMessageRouting rabbitMqConf
-    , sendMailFailureRouting rabbitMqConf
-    , heistFailureRouting rabbitMqConf
+    , messagesAreSent rabbitMqConf pgConf
+    , invalidMessageRouting rabbitMqConf pgConf
+    , sendMailFailureRouting rabbitMqConf pgConf
+    , heistFailureRouting rabbitMqConf pgConf
     , rateLimitTests
     ]
 
@@ -88,7 +88,7 @@ enqueuePasswordResets pgConf rabbitConf = withTimeOut $
   Tests.testGroup "Enqueueing password reset emails"
     [ Tests.testCase "Will send password reset emails to editors with old login date and confirmed email address" $
         withRabbitMq rabbitConf $ \(rabbitMq, _) -> do
-          pg <- emptyPg
+          pg <- emptyPg pgConf
 
           PG.execute pg
             [sql| INSERT INTO editor (name, password, email, email_confirm_date, last_login_date)
@@ -106,7 +106,7 @@ enqueuePasswordResets pgConf rabbitConf = withTimeOut $
 
     , Tests.testCase "Will not send to editors with unconfirmed email address" $
         withRabbitMq rabbitConf $ \(rabbitMq, _) -> do
-          pg <- emptyPg
+          pg <- emptyPg pgConf
 
           PG.execute pg
             [sql| INSERT INTO editor (name, password, email, email_confirm_date, last_login_date)
@@ -119,7 +119,7 @@ enqueuePasswordResets pgConf rabbitConf = withTimeOut $
 
     , Tests.testCase "Will not send to editors who logged in recently" $
         withRabbitMq rabbitConf $ \(rabbitMq, _) -> do
-          pg <- emptyPg
+          pg <- emptyPg pgConf
 
           PG.execute pg
             [sql| INSERT INTO editor (name, password, email, email_confirm_date, last_login_date)
@@ -140,11 +140,6 @@ enqueuePasswordResets pgConf rabbitConf = withTimeOut $
 
     (STM.atomically $ TChan.isEmptyTChan sentMessages)
       @? "No emails should have been sent"
-
-  emptyPg = do
-    pg <- PG.connect pgConf
-    PG.execute_ pg "TRUNCATE editor CASCADE"
-    return pg
 
   expected = Email.Email
     { Email.emailTo = Mail.Address { Mail.addressEmail = "ollie@ocharles.org.uk"
@@ -209,14 +204,16 @@ deriving instance Show Mail.Mail
 deriving instance Eq Mail.Part
 deriving instance Show Mail.Part
 
-messagesAreSent :: Messaging.RabbitMQConnection -> Tests.Test
-messagesAreSent rabbitConf = withTimeOut $
+messagesAreSent :: Messaging.RabbitMQConnection -> PG.ConnectInfo -> Tests.Test
+messagesAreSent rabbitConf pgConf = withTimeOut $
   Tests.testCase "Emails in outbox are sent by outbox consumer" $ do
     withRabbitMq rabbitConf $ \(rabbitMq, rabbitMqConn) -> do
       heist <- Mailer.loadTemplates
 
+      pg <- validPg pgConf
+
       sentEmails <- STM.atomically $ TChan.newTChan
-      Mailer.consumeOutbox rabbitMqConn heist $
+      Mailer.consumeOutbox rabbitMqConn pg heist $
         STM.atomically . TChan.writeTChan sentEmails
 
       AMQP.publishMsg rabbitMq Email.outboxExchange ""
@@ -242,14 +239,16 @@ testEmail = Email.Email
 
 
 --------------------------------------------------------------------------------
-invalidMessageRouting :: Messaging.RabbitMQConnection -> Tests.Test
-invalidMessageRouting rabbitConf = withTimeOut $
+invalidMessageRouting :: Messaging.RabbitMQConnection -> PG.ConnectInfo -> Tests.Test
+invalidMessageRouting rabbitConf pgConf = withTimeOut $
   Tests.testCase "Unparsable emails are forwarded to outbox.invalid" $ do
     withRabbitMq rabbitConf $ \(rabbitMq, rabbitMqConn) -> do
       invalidMessages <- spyQueue rabbitMq Email.invalidQueue
 
+      pg <- validPg pgConf
+
       heist <- Mailer.loadTemplates
-      Mailer.consumeOutbox rabbitMqConn heist (const $ return ())
+      Mailer.consumeOutbox rabbitMqConn pg heist (const $ return ())
 
       AMQP.publishMsg rabbitMq Email.outboxExchange ""
         AMQP.newMsg { AMQP.msgBody = invalidRequest }
@@ -266,14 +265,16 @@ invalidMessageRouting rabbitConf = withTimeOut $
 
 
 --------------------------------------------------------------------------------
-sendMailFailureRouting :: Messaging.RabbitMQConnection -> Tests.Test
-sendMailFailureRouting rabbitConf = withTimeOut $
+sendMailFailureRouting :: Messaging.RabbitMQConnection -> PG.ConnectInfo -> Tests.Test
+sendMailFailureRouting rabbitConf pgConf = withTimeOut $
   Tests.testCase "If sendmail doesn't exit cleanly, messages are forwarded to outbox.unroutable" $ do
     withRabbitMq rabbitConf $ \(rabbitMq, rabbitMqConn) -> do
       unroutableMessages <- spyQueue rabbitMq Email.unroutableQueue
 
+      pg <- validPg pgConf
+
       heist <- Mailer.loadTemplates
-      Mailer.consumeOutbox rabbitMqConn heist (const $ error errorMessage)
+      Mailer.consumeOutbox rabbitMqConn pg heist (const $ error errorMessage)
 
       AMQP.publishMsg rabbitMq Email.outboxExchange ""
         AMQP.newMsg { AMQP.msgBody = Aeson.encode testEmail }
@@ -290,15 +291,17 @@ sendMailFailureRouting rabbitConf = withTimeOut $
 
 
 --------------------------------------------------------------------------------
-heistFailureRouting :: Messaging.RabbitMQConnection -> Tests.Test
-heistFailureRouting rabbitConf = withTimeOut $
+heistFailureRouting :: Messaging.RabbitMQConnection -> PG.ConnectInfo -> Tests.Test
+heistFailureRouting rabbitConf pgConf = withTimeOut $
   Tests.testCase "If Heist can't expand the template, messages are forwarded to outbox.unroutable" $ do
     withRabbitMq rabbitConf $ \(rabbitMq, rabbitMqConn) -> do
       unroutableMessages <- spyQueue rabbitMq Email.unroutableQueue
 
+      pg <- validPg pgConf
+
       -- A 'Heist' that doesn't know about any of the templates
       Right emptyHeist <- Error.runEitherT (Heist.initHeist mempty)
-      Mailer.consumeOutbox rabbitMqConn emptyHeist (const $ return ())
+      Mailer.consumeOutbox rabbitMqConn pg emptyHeist (const $ return ())
 
       AMQP.publishMsg rabbitMq Email.outboxExchange ""
         AMQP.newMsg { AMQP.msgBody = Aeson.encode testEmail }
@@ -331,7 +334,7 @@ withRabbitMq rabbitConf = bracket acquire release
 --------------------------------------------------------------------------------
 withTimeOut :: Tests.Test -> Tests.Test
 withTimeOut =
-  Tests.plusTestOptions mempty { Tests.topt_timeout = Just (Just 50000000) }
+  Tests.plusTestOptions mempty { Tests.topt_timeout = Just (Just 5000000) }
 
 
 --------------------------------------------------------------------------------
@@ -364,3 +367,20 @@ rateLimitTests = Tests.testCase "Fast requests are rate limited" $ do
   duration >= expected @?
     (show requests ++ " requests should take at least 1/5 second, took " ++
      show duration ++ " expected " ++ show expected)
+
+
+--------------------------------------------------------------------------------
+emptyPg :: PG.ConnectInfo -> IO PG.Connection
+emptyPg pgConf = do
+  pg <- PG.connect pgConf
+  PG.execute_ pg "SET client_min_messages TO warning; TRUNCATE editor CASCADE"
+  return pg
+
+
+validPg :: PG.ConnectInfo -> IO PG.Connection
+validPg pgConf = do
+  pg <- emptyPg pgConf
+  PG.execute_ pg
+      [sql| INSERT INTO editor (name, password, email, email_confirm_date, last_login_date)
+            VALUES ('ocharles', 'ignored', 'pass', '2010-01-01', '2010-01-01') |]
+  return pg

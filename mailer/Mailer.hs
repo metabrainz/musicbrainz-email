@@ -19,6 +19,7 @@ import qualified Blaze.ByteString.Builder as Builder
 import qualified Control.Error as Error
 import qualified Data.Aeson as Aeson
 import qualified Data.Text as Text
+import qualified Database.PostgreSQL.Simple as PG
 import qualified Heist as Heist
 import qualified Heist.Interpreted as Heist
 import qualified Network.AMQP as AMQP
@@ -81,10 +82,11 @@ emailToMail email heist = runIdentity $
 -- outbox queue. To form the callback, IO is performed to open a 'AMQP.Channel'
 -- for the callback, so that it can publish failures.
 consumeOutbox :: AMQP.Connection
+              -> PG.Connection
               -> Heist.HeistState Identity
               -> (Mail.Mail -> IO ())
               -> IO ()
-consumeOutbox rabbitMqConn heist sendMail = do
+consumeOutbox rabbitMqConn pg heist sendMail = do
   rabbitMq <- AMQP.openChannel rabbitMqConn
 
   void $ AMQP.consumeMsgs rabbitMq Email.outboxQueue AMQP.Ack $
@@ -106,7 +108,13 @@ consumeOutbox rabbitMqConn heist sendMail = do
                    ]
                 }
 
-  trySendEmail email = tryFormEmail >>= trySend
+  trySendEmail email = do
+    let editor = case email of (Email.Email (Email.PasswordReset n) _ _) -> n
+    shouldSendEmail <- Error.EitherT $ fmap (Right . not . null) $
+      (PG.query pg "SELECT TRUE FROM editor WHERE name = ? AND last_login_date < '2013-03-29'" (PG.Only editor) :: IO [PG.Only Bool])
+    if shouldSendEmail
+      then tryFormEmail >>= trySend
+      else Error.EitherT $ fmap return $ putStrLn $ "Not sending an email to " ++ show editor
 
    where
 
