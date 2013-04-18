@@ -11,7 +11,6 @@ import System.IO.Error (catchIOError)
 
 
 --------------------------------------------------------------------------------
-import qualified Database.PostgreSQL.Simple as PG
 import qualified Network.AMQP as AMQP
 import qualified Network.Mail.Mime as Mail
 import qualified Network.Metric as Metrics
@@ -32,16 +31,14 @@ data StatsdConfiguration = Statsd { statsdHost :: String
 
 
 --------------------------------------------------------------------------------
-data Options = Options Messaging.RabbitMQConnection PG.ConnectInfo StatsdConfiguration
+data Options = Options Messaging.RabbitMQConnection StatsdConfiguration
 
 
 --------------------------------------------------------------------------------
 run :: Options -> IO ()
-run (Options rabbitMqConf db Statsd {..}) = do
+run (Options rabbitMqConf Statsd {..}) = do
   rabbitMqConn <- Messaging.connect rabbitMqConf
   rabbitMq <- AMQP.openChannel rabbitMqConn
-
-  pg <- PG.connect db
 
   Email.establishRabbitMqConfiguration rabbitMq
 
@@ -55,7 +52,7 @@ run (Options rabbitMqConf db Statsd {..}) = do
                        `catchIOError` (const $ putStrLn "Couldn't write to statsd")
 
   heist <- Mailer.loadTemplates
-  Mailer.consumeOutbox rabbitMqConn pg heist sendMail
+  Mailer.consumeOutbox rabbitMqConn heist sendMail
 
   forever (threadDelay 1000000)
 
@@ -69,7 +66,6 @@ main = Optparse.execParser parser >>= run
   parser =
     Optparse.info
       (Options <$> Messaging.rabbitOptparse
-               <*> dbOptions
                <*> statsdParser
                <**> Optparse.helper)
           mempty
@@ -84,27 +80,3 @@ main = Optparse.execParser parser >>= run
                                       , Optparse.value 8125
                                       , Optparse.help "Statsd port"
                                       ]))
-
-
-  dbOptions =
-    PG.ConnectInfo
-      <$> Optparse.strOption (mconcat [ Optparse.long "db-host"
-                                      , Optparse.value "localhost"
-                                      , Optparse.help "PostgreSQL database host"
-                                      ])
-      <*> Optparse.option (mconcat [ Optparse.long "db-port"
-                                   , Optparse.value 5432
-                                   , Optparse.help "PostgreSQL database port"
-                                   ])
-      <*> Optparse.strOption (mconcat [ Optparse.long "db-user"
-                                      , Optparse.value "musicbrainz"
-                                      , Optparse.help "PostgreSQL database username"
-                                      ])
-      <*> Optparse.strOption (mconcat [ Optparse.long "db-password"
-                                      , Optparse.value ""
-                                      , Optparse.help "PostgreSQL database password"
-                                      ])
-      <*> Optparse.strOption (mconcat [ Optparse.long "db"
-                                      , Optparse.help "Name of the MusicBrainz database in PostgreSQL"
-                                      , Optparse.value "musicbrainz"
-                                      ])
