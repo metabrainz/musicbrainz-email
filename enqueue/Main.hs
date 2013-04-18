@@ -8,7 +8,6 @@ import Data.Monoid (mconcat, mempty)
 
 
 --------------------------------------------------------------------------------
-import qualified Database.PostgreSQL.Simple as PG
 import qualified Options.Applicative as Optparse
 
 
@@ -29,11 +28,7 @@ main = Optparse.execParser parser >>= Enqueue.run
                          <**> Optparse.helper)
                     mempty
 
-    commands = [ Optparse.command "password-reset" $
-                   Optparse.info (Enqueue.PasswordReset <$> dbOptions <**> Optparse.helper)
-                     (Optparse.progDesc "Send mandatory password reset emails")
-
-               , Optparse.command "retry" $
+    commands = [ Optparse.command "retry" $
                    Optparse.info (Enqueue.Retry <$> Optparse.subparser (mconcat retryCommand)
                                                 <**> Optparse.helper)
                      (Optparse.progDesc "Retry sending failed or unroutable emails")
@@ -50,28 +45,3 @@ main = Optparse.execParser parser >>= Enqueue.run
                                         <**> Optparse.helper)
                          (Optparse.progDesc "Retry all invalid or unroutable emails")
                    ]
-
-    dbOptions =
-      PG.ConnectInfo
-        <$> Optparse.strOption (mconcat [ Optparse.long "db-host"
-                                        , Optparse.value "localhost"
-                                        , Optparse.help "PostgreSQL database host"
-                                        ])
-        <*> Optparse.option (mconcat [ Optparse.long "db-port"
-                                     , Optparse.value 5432
-                                     , Optparse.help "PostgreSQL database port"
-                                     ])
-        <*> Optparse.strOption (mconcat [ Optparse.long "db-user"
-                                        , Optparse.value "musicbrainz"
-                                        , Optparse.help "PostgreSQL database username"
-                                        ])
-        <*> Optparse.strOption (mconcat [ Optparse.long "db-password"
-                                        , Optparse.value ""
-                                        , Optparse.help "PostgreSQL database password"
-                                        ])
-        <*> Optparse.strOption (mconcat [ Optparse.long "db"
-                                        , Optparse.help "Name of the MusicBrainz database in PostgreSQL"
-                                        , Optparse.value "musicbrainz"
-                                        ])
-
-

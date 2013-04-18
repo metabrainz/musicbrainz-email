@@ -70,7 +70,7 @@ evaluateCommand (PasswordReset connInfo) = lift $ do
           FROM editor
           WHERE email IS DISTINCT FROM ''
             AND email_confirm_date IS NOT NULL
-            AND last_login_date < '2013-04-29'
+            AND last_login_date < '2013-03-29'
     |]
 
 
