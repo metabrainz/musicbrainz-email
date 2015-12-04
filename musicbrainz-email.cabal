@@ -2,7 +2,7 @@ name: musicbrainz-email
 category: MusicBrainz
 version: 1.0.0.0
 synopsis: Send an email to all MusicBrainz editors
-homepage: http://github.com/metabrainz/mass-mail
+homepage: http://github.com/metabrainz/musicbrainz-email
 license: GPL-3
 license-file: LICENSE
 author: Oliver Charles
