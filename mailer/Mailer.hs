@@ -10,17 +10,19 @@ import Prelude hiding (catch)
 --------------------------------------------------------------------------------
 #if (__GLASGOW_HASKELL__ < 710)
 import Control.Applicative ((<$>))
-import Data.Monoid (mempty)
 #endif
 
 import Control.Exception (SomeException, try)
+import Control.Lens (set)
 import Control.Monad (void)
 import Data.Aeson ((.=))
 import Data.Functor.Identity (Identity, runIdentity)
+import Data.Map.Syntax ((##))
 
 --------------------------------------------------------------------------------
 import qualified Blaze.ByteString.Builder as Builder
-import qualified Control.Error as Error
+import qualified Control.Error.Util as ErrorUtil
+import qualified Control.Monad.Trans.Either as Either
 import qualified Data.Aeson as Aeson
 import qualified Data.Text as Text
 import qualified Heist as Heist
@@ -60,7 +62,7 @@ emailToMail email heist = runIdentity $
     (Email.PasswordReset _) -> "password-reset"
 
   templateBindings = case template of
-    (Email.PasswordReset editor) -> [("editor", editor)]
+    (Email.PasswordReset editor) -> ("editor" ## editor)
 
   emailSubject = case template of
     (Email.PasswordReset _) -> "Mandatory Password Reset"
@@ -95,7 +97,7 @@ consumeOutbox rabbitMqConn heist sendMail = do
     \(msg, env) -> do
       maybe
         (publishFailure rabbitMq Email.invalidKey (unableToDecode msg))
-        (Error.eitherT (publishFailure rabbitMq Email.unroutableKey) return .
+        (Either.eitherT (publishFailure rabbitMq Email.unroutableKey) return .
            trySendEmail)
         (Aeson.decode $ AMQP.msgBody msg)
 
@@ -122,15 +124,15 @@ consumeOutbox rabbitMqConn heist sendMail = do
                   }
 
     tryFormEmail =
-      Error.EitherT $ return $
-        Error.note (failureMessage "Couldn't render template") $
+      Either.EitherT $ return $
+        ErrorUtil.note (failureMessage "Couldn't render template") $
           emailToMail email heist
 
     trySend mail =
       let exceptionMessage e =
             failureMessage (Text.pack (show (e :: SomeException)))
-      in Error.bimapEitherT exceptionMessage id $
-           Error.EitherT $ try (sendMail mail)
+      in Either.bimapEitherT exceptionMessage id $
+           Either.EitherT $ try (sendMail mail)
 
   publishFailure rabbitMq = AMQP.publishMsg rabbitMq Email.failureExchange
 
@@ -139,6 +141,8 @@ consumeOutbox rabbitMqConn heist sendMail = do
 loadTemplates :: Monad m => IO (Heist.HeistState m)
 loadTemplates = fmap (either (error . show) id) $ do
   templatesDir <- Email.getDataFileName "templates"
-  Error.runEitherT $ do
-    templateRepo <- Heist.loadTemplates templatesDir
-    Heist.initHeist mempty { Heist.hcTemplates = templateRepo }
+  Either.runEitherT $ do
+    Heist.initHeist $
+      (set Heist.hcNamespace "") $
+        (set Heist.hcTemplateLocations [Heist.loadTemplates templatesDir]) $
+          Heist.emptyHeistConfig

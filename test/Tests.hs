@@ -23,8 +23,8 @@ import Database.PostgreSQL.Simple.SqlQQ (sql)
 
 
 --------------------------------------------------------------------------------
-import qualified Control.Error as Error
 import qualified Control.Concurrent.STM as STM
+import qualified Control.Monad.Trans.Either as Either
 import qualified Data.Aeson as Aeson
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as LBS
@@ -303,7 +303,7 @@ heistFailureRouting rabbitConf = withTimeOut $
       unroutableMessages <- spyQueue rabbitMq Email.unroutableQueue
 
       -- A 'Heist' that doesn't know about any of the templates
-      Right emptyHeist <- Error.runEitherT (Heist.initHeist mempty)
+      Right emptyHeist <- Either.runEitherT (Heist.initHeist mempty)
       Mailer.consumeOutbox rabbitMqConn emptyHeist (const $ return ())
 
       AMQP.publishMsg rabbitMq Email.outboxExchange ""
