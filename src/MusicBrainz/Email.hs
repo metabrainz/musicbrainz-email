@@ -37,9 +37,7 @@ import qualified Network.Mail.Mime as Mail
 
 
 --------------------------------------------------------------------------------
-deriving instance Eq Mail.Address
 deriving instance Generic Mail.Address
-deriving instance Show Mail.Address
 
 data Email = Email
     { emailTemplate :: Template
