@@ -25,12 +25,13 @@ module MusicBrainz.Email
     ) where
 
 --------------------------------------------------------------------------------
+import Data.Text (Text)
 import GHC.Generics (Generic)
 
 
 --------------------------------------------------------------------------------
 import qualified Data.Aeson as Aeson
-import qualified Data.Text as Text
+import qualified Data.Text as T
 import qualified Network.AMQP as AMQP
 import qualified Network.Mail.Mime as Mail
 
@@ -55,7 +56,7 @@ instance Aeson.ToJSON Email
 
 
 --------------------------------------------------------------------------------
-data Template = PasswordReset { passwordResetEditor :: Text.Text }
+data Template = PasswordReset { passwordResetEditor :: Text }
   deriving (Eq, Generic, Show)
 
 instance Aeson.FromJSON Template
@@ -63,31 +64,31 @@ instance Aeson.FromJSON Template
 instance Aeson.ToJSON Template
 
 --------------------------------------------------------------------------------
-outboxExchange, failureExchange :: String
-invalidKey, unroutableKey :: String
-outboxQueue, unroutableQueue, invalidQueue :: String
+outboxExchange, failureExchange :: Text
+invalidKey, unroutableKey :: Text
+outboxQueue, unroutableQueue, invalidQueue :: Text
 
-outboxExchange = "outbox"
-failureExchange = "failure"
+outboxExchange = T.pack "outbox"
+failureExchange = T.pack "failure"
 
-invalidKey = "invalid"
-unroutableKey = "unroutable"
+invalidKey = T.pack "invalid"
+unroutableKey = T.pack "unroutable"
 
-outboxQueue = "outbox"
-invalidQueue = "outbox.invalid"
-unroutableQueue = "outbox.unroutable"
+outboxQueue = T.pack "outbox"
+invalidQueue = T.pack "outbox.invalid"
+unroutableQueue = T.pack "outbox.unroutable"
 
 --------------------------------------------------------------------------------
 establishRabbitMqConfiguration :: AMQP.Channel -> IO ()
 establishRabbitMqConfiguration rabbitMq = do
   AMQP.declareExchange rabbitMq
     AMQP.newExchange { AMQP.exchangeName = outboxExchange
-                     , AMQP.exchangeType = "fanout"
+                     , AMQP.exchangeType = T.pack "fanout"
                      }
 
   AMQP.declareExchange rabbitMq
     AMQP.newExchange { AMQP.exchangeName = failureExchange
-                     , AMQP.exchangeType = "direct"
+                     , AMQP.exchangeType = T.pack "direct"
                      }
 
 
@@ -101,7 +102,7 @@ establishRabbitMqConfiguration rabbitMq = do
     AMQP.newQueue { AMQP.queueName = unroutableQueue }
 
 
-  AMQP.bindQueue rabbitMq outboxQueue outboxExchange ""
+  AMQP.bindQueue rabbitMq outboxQueue outboxExchange (T.pack "")
   AMQP.bindQueue rabbitMq invalidQueue failureExchange invalidKey
   AMQP.bindQueue rabbitMq unroutableQueue failureExchange unroutableKey
 
@@ -109,7 +110,7 @@ establishRabbitMqConfiguration rabbitMq = do
 --------------------------------------------------------------------------------
 enqueueEmail :: AMQP.Channel -> Email -> IO ()
 enqueueEmail rabbitMq email =
-  AMQP.publishMsg rabbitMq outboxExchange ""
+  AMQP.publishMsg rabbitMq outboxExchange (T.pack "")
     AMQP.newMsg
       { AMQP.msgBody = Aeson.encode email
       , AMQP.msgDeliveryMode = Just AMQP.Persistent
