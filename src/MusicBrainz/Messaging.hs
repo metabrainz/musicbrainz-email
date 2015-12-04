@@ -1,4 +1,6 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE RecordWildCards #-}
+
 module MusicBrainz.Messaging
     ( RabbitMQConnection(..)
     , connect
@@ -6,8 +8,11 @@ module MusicBrainz.Messaging
     ) where
 
 --------------------------------------------------------------------------------
+#if (__GLASGOW_HASKELL__ < 710)
 import Control.Applicative ((<*>), (<$>))
 import Data.Monoid (mconcat)
+#endif
+
 import Data.Text (Text)
 
 --------------------------------------------------------------------------------

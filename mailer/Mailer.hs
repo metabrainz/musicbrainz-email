@@ -1,4 +1,6 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE OverloadedStrings #-}
+
 module Mailer where
 
 --------------------------------------------------------------------------------
@@ -6,13 +8,15 @@ import Prelude hiding (catch)
 
 
 --------------------------------------------------------------------------------
+#if (__GLASGOW_HASKELL__ < 710)
 import Control.Applicative ((<$>))
+import Data.Monoid (mempty)
+#endif
+
 import Control.Exception (SomeException, try)
 import Control.Monad (void)
-import Data.Functor.Identity (Identity, runIdentity)
-import Data.Monoid (mempty)
-
 import Data.Aeson ((.=))
+import Data.Functor.Identity (Identity, runIdentity)
 
 --------------------------------------------------------------------------------
 import qualified Blaze.ByteString.Builder as Builder

@@ -1,7 +1,12 @@
+{-# LANGUAGE CPP #-}
+
 module RateLimit (rateLimit) where
 
 --------------------------------------------------------------------------------
+#if (__GLASGOW_HASKELL__ < 710)
 import Control.Applicative ((<*))
+#endif
+
 import Control.Concurrent (threadDelay)
 import Control.Concurrent.MVar (newMVar, readMVar, swapMVar)
 import Control.Monad (void)

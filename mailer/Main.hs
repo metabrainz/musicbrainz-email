@@ -1,12 +1,18 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
+
 module Main (main) where
 
 --------------------------------------------------------------------------------
-import Control.Applicative ((<$>), (<*>), (<**>))
+#if (__GLASGOW_HASKELL__ < 710)
+import Control.Applicative ((<$>), (<*>))
+import Data.Monoid (mconcat, mempty)
+#endif
+
 import Control.Concurrent (threadDelay)
 import Control.Monad (forever)
-import Data.Monoid (mconcat, mempty)
+import Options.Applicative ((<**>))
 import System.IO.Error (catchIOError)
 
 

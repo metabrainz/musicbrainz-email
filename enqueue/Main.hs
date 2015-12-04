@@ -1,11 +1,16 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE QuasiQuotes #-}
+
 module Main (main) where
 
 --------------------------------------------------------------------------------
-import Control.Applicative ((<$>), (<*>), (<**>), pure)
-import Data.Monoid (mconcat, mempty)
+import Options.Applicative ((<**>))
 
+#if (__GLASGOW_HASKELL__ < 710)
+import Control.Applicative ((<$>), (<*>), pure)
+import Data.Monoid (mconcat, mempty)
+#endif
 
 --------------------------------------------------------------------------------
 import qualified Options.Applicative as Optparse

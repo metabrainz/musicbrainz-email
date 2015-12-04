@@ -1,17 +1,22 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE StandaloneDeriving #-}
+
 module Main (main) where
 
 --------------------------------------------------------------------------------
+#if (__GLASGOW_HASKELL__ < 710)
 import Control.Applicative ((<$>), (<*>))
+import Data.Monoid (mempty)
+#endif
+
 import Control.Exception (bracket)
 import Control.Monad (replicateM)
 import Control.Monad.IO.Class (liftIO)
 import qualified Control.Concurrent.STM.TChan as TChan
-import Data.Monoid (mempty)
 import System.IO.Error (catchIOError, isDoesNotExistError)
 
 import Database.PostgreSQL.Simple.SqlQQ (sql)
