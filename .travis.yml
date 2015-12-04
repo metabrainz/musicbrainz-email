@@ -1,0 +1,11 @@
+ghc:
+  - 7.10
+  - 7.8
+  - 7.6
+  - 7.4
+services:
+  - rabbitmq
+addons:
+  postgresql: "9.1"
+script:
+  - ./jenkins.sh
