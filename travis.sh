@@ -1,18 +1,12 @@
 #!/bin/bash
 
-git clone --recursive git://github.com/metabrainz/musicbrainz-server
+git clone git://github.com/metabrainz/musicbrainz-server
 pushd musicbrainz-server
-
-pushd postgresql-musicbrainz-collate
-make
-sudo make install
-popd
 
 psql -U postgres -c "CREATE USER musicbrainz NOCREATEDB NOCREATEUSER"
 psql -U postgres -c "CREATE DATABASE musicbrainz_email WITH OWNER musicbrainz"
 psql -U postgres musicbrainz_email -c "CREATE EXTENSION cube"
 psql -U postgres musicbrainz_email -c "CREATE EXTENSION \"uuid-ossp\""
-psql -U postgres musicbrainz_email -c "CREATE EXTENSION musicbrainz_collate"
 psql -U musicbrainz musicbrainz_email -c "CREATE SCHEMA musicbrainz"
 psql -U musicbrainz musicbrainz_email < admin/sql/CreateTables.sql
 

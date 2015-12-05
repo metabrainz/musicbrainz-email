@@ -13,7 +13,6 @@ addons:
   apt:
     packages:
     - postgresql-contrib-9.1
-    - libicu-dev
   postgresql: "9.1"
 
 before_install:
