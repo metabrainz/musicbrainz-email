@@ -1,4 +1,4 @@
-# musicbrainz-email
+# musicbrainz-email [![Build Status](https://travis-ci.org/metabrainz/musicbrainz-email.svg?branch=master)](https://travis-ci.org/metabrainz/musicbrainz-email)
 
 The `musicbrainz-email` consists of a library and two executables:
 
