@@ -11,3 +11,6 @@ addons:
 script:
   - ./jenkins.sh
 sudo: false
+cache:
+  directories:
+  - $HOME/.cabal
