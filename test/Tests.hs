@@ -17,6 +17,7 @@ import Control.Exception (bracket)
 import Control.Monad (replicateM)
 import Control.Monad.IO.Class (liftIO)
 import qualified Control.Concurrent.STM.TChan as TChan
+import Data.Text.Lazy.Encoding (decodeUtf8)
 import System.IO.Error (catchIOError, isDoesNotExistError)
 
 import Database.PostgreSQL.Simple.SqlQQ (sql)
@@ -102,7 +103,7 @@ enqueuePasswordResets pgConf rabbitConf = withTimeOut $
             , Mail.addressEmail $ Email.emailTo expected
             )
 
-          sentMessages <- spyQueue rabbitMq Email.outboxQueue
+          sentMessages <- spyQueue rabbitMq (Text.unpack Email.outboxQueue)
 
           liftIO (Enqueue.run (Enqueue.Options (Enqueue.PasswordReset pgConf) rabbitConf))
 
@@ -139,7 +140,7 @@ enqueuePasswordResets pgConf rabbitConf = withTimeOut $
  where
 
   expectNoSentMessages rabbitMq = do
-    sentMessages <- spyQueue rabbitMq Email.outboxQueue
+    sentMessages <- spyQueue rabbitMq (Text.unpack Email.outboxQueue)
 
     liftIO (Enqueue.run (Enqueue.Options (Enqueue.PasswordReset pgConf) rabbitConf))
 
@@ -206,14 +207,7 @@ expandTemplates = Tests.buildTest $ do
 
 
 --------------------------------------------------------------------------------
-deriving instance Eq Mail.Encoding
-deriving instance Show Mail.Encoding
-
 deriving instance Eq Mail.Mail
-deriving instance Show Mail.Mail
-
-deriving instance Eq Mail.Part
-deriving instance Show Mail.Part
 
 messagesAreSent :: Messaging.RabbitMQConnection -> Tests.Test
 messagesAreSent rabbitConf = withTimeOut $
@@ -252,7 +246,7 @@ invalidMessageRouting :: Messaging.RabbitMQConnection -> Tests.Test
 invalidMessageRouting rabbitConf = withTimeOut $
   Tests.testCase "Unparsable emails are forwarded to outbox.invalid" $ do
     withRabbitMq rabbitConf $ \(rabbitMq, rabbitMqConn) -> do
-      invalidMessages <- spyQueue rabbitMq Email.invalidQueue
+      invalidMessages <- spyQueue rabbitMq (Text.unpack Email.invalidQueue)
 
       heist <- Mailer.loadTemplates
       Mailer.consumeOutbox rabbitMqConn heist (const $ return ())
@@ -263,7 +257,7 @@ invalidMessageRouting rabbitConf = withTimeOut $
       invalidMessage <- STM.atomically $ TChan.readTChan invalidMessages
       Aeson.decode (AMQP.msgBody invalidMessage) @?=
         Just (Aeson.object [ "error" .= ("Could not decode JSON" :: String)
-                           , "json" .= invalidRequest
+                           , "json" .= decodeUtf8 invalidRequest
                            ])
 
  where
@@ -276,7 +270,7 @@ sendMailFailureRouting :: Messaging.RabbitMQConnection -> Tests.Test
 sendMailFailureRouting rabbitConf = withTimeOut $
   Tests.testCase "If sendmail doesn't exit cleanly, messages are forwarded to outbox.unroutable" $ do
     withRabbitMq rabbitConf $ \(rabbitMq, rabbitMqConn) -> do
-      unroutableMessages <- spyQueue rabbitMq Email.unroutableQueue
+      unroutableMessages <- spyQueue rabbitMq (Text.unpack Email.unroutableQueue)
 
       heist <- Mailer.loadTemplates
       Mailer.consumeOutbox rabbitMqConn heist (const $ error errorMessage)
@@ -300,10 +294,10 @@ heistFailureRouting :: Messaging.RabbitMQConnection -> Tests.Test
 heistFailureRouting rabbitConf = withTimeOut $
   Tests.testCase "If Heist can't expand the template, messages are forwarded to outbox.unroutable" $ do
     withRabbitMq rabbitConf $ \(rabbitMq, rabbitMqConn) -> do
-      unroutableMessages <- spyQueue rabbitMq Email.unroutableQueue
+      unroutableMessages <- spyQueue rabbitMq (Text.unpack Email.unroutableQueue)
 
       -- A 'Heist' that doesn't know about any of the templates
-      Right emptyHeist <- Either.runEitherT (Heist.initHeist mempty)
+      Right emptyHeist <- Either.runEitherT (Heist.initHeist Heist.emptyHeistConfig)
       Mailer.consumeOutbox rabbitMqConn emptyHeist (const $ return ())
 
       AMQP.publishMsg rabbitMq Email.outboxExchange ""
@@ -347,7 +341,7 @@ spyQueue :: AMQP.Channel
 spyQueue rabbitMq queue = do
   sentMessages <- STM.atomically $ TChan.newTChan
 
-  AMQP.consumeMsgs rabbitMq queue AMQP.NoAck $ \(message, _) ->
+  AMQP.consumeMsgs rabbitMq (Text.pack queue) AMQP.NoAck $ \(message, _) ->
     STM.atomically $ TChan.writeTChan sentMessages message
 
   return sentMessages

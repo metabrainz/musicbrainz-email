@@ -1,5 +1,6 @@
 dist
 cabal-dev
+test.cfg
 *.o
 *.hi
 *.chi
