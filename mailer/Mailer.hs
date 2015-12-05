@@ -18,6 +18,8 @@ import Control.Monad (void)
 import Data.Aeson ((.=))
 import Data.Functor.Identity (Identity, runIdentity)
 import Data.Map.Syntax ((##))
+import Data.Text.Lazy.Encoding (decodeUtf8)
+
 
 --------------------------------------------------------------------------------
 import qualified Blaze.ByteString.Builder as Builder
@@ -105,10 +107,12 @@ consumeOutbox rabbitMqConn heist sendMail = do
 
  where
 
+  getMsgBodyText = decodeUtf8 . AMQP.msgBody
+
   unableToDecode msg =
     AMQP.newMsg { AMQP.msgBody = Aeson.encode $ Aeson.object
                    [ "error" .= ("Could not decode JSON" :: String)
-                   , "json" .= AMQP.msgBody msg
+                   , "json" .= getMsgBodyText msg
                    ]
                 }
 
