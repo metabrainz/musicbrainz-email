@@ -48,7 +48,7 @@ run (Options rabbitMqConf Statsd {..}) = do
 
   Email.establishRabbitMqConfiguration rabbitMq
 
-  statsd <- Metrics.open Metrics.Statsd "musicbrainz" statsdHost statsdPort
+  statsd <- Metrics.open Metrics.Statsd (Just "musicbrainz") statsdHost statsdPort
   sendMail <- let approximateEditorCount = 680000
                   day = 24 * 60 * 60.0
               in RateLimit.rateLimit (approximateEditorCount / day) $
