@@ -1,17 +1,23 @@
 language: haskell
+
 ghc:
   - "7.8"
   - "7.6"
+
 services:
   - rabbitmq
+
 addons:
   apt:
     packages:
     - postgresql-contrib-9.1
   postgresql: "9.1"
+
 script:
   - ./jenkins.sh
+
 sudo: false
+
 cache:
   directories:
   - $HOME/.cabal
