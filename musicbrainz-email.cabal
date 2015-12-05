@@ -23,7 +23,7 @@ library
     ghc-prim,
     mime-mail >= 0.4.11 && < 0.5,
     optparse-applicative >= 0.12.0.0 && < 0.13,
-    text >= 0.11
+    text >= 1.2.1 && < 1.3
   ghc-options: -Wall -fwarn-tabs -funbox-strict-fields -O2
                -fno-warn-orphans -fno-warn-unused-do-bind
                -Werror
@@ -35,24 +35,24 @@ executable musicbrainz-emailer
     aeson >= 0.9.0.1 && < 0.10,
     amqp >= 0.13.0 && < 0.14,
     base >= 4.5 && < 4.9,
-    blaze-builder >= 0.3,
+    blaze-builder >= 0.4 && < 0.5,
     bytestring >= 0.10.6.0 && < 0.11,
     either >= 4.4.1 && < 4.5,
     errors >= 2.0.1 && < 2.1,
     heist >= 0.14.1.1 && < 0.15,
-    HTTP >= 4000.2.8,
+    HTTP >= 4000.2.8 && < 4000.3,
     lens >= 4.13 && < 4.14,
     map-syntax >= 0.2 && < 0.3,
     mime-mail >= 0.4.11 && < 0.5,
     musicbrainz-email == 1.0.0.0,
-    mtl >= 0.3.0.0,
+    mtl >= 2.2.1 && < 2.3,
     network,
     network-metrics >= 0.4 && < 0.5,
     optparse-applicative >= 0.12.0.0 && < 0.13,
-    text >= 0.11,
-    time >= 1.4,
-    transformers >= 0.2.2.0,
-    xmlhtml >= 0.2.1
+    text >= 1.2.1 && < 1.3,
+    time >= 1.5.0 && < 1.6,
+    transformers >= 0.4.2 && < 0.5,
+    xmlhtml >= 0.2.1 && < 0.3
   ghc-options: -Wall -fwarn-tabs -funbox-strict-fields -O2
                -fno-warn-orphans -fno-warn-unused-do-bind
                -Werror
@@ -65,11 +65,11 @@ executable enqueue-mail
     amqp >= 0.13.0 && < 0.14,
     base >= 4.5 && < 4.9,
     mime-mail >= 0.4.11 && < 0.5,
-    mtl >= 0.3.0.0,
+    mtl >= 2.2.1 && < 2.3,
     musicbrainz-email == 1.0.0.0,
     optparse-applicative >= 0.12.0.0 && < 0.13,
     postgresql-simple >= 0.2,
-    transformers >= 0.2.2.0
+    transformers >= 0.4.2 && < 0.5
   ghc-options: -Wall -fwarn-tabs -funbox-strict-fields -O2
                -fno-warn-orphans -fno-warn-unused-do-bind
                -Werror
@@ -85,19 +85,19 @@ test-suite tests
     aeson >= 0.9.0.1 && < 0.10,
     amqp >= 0.13.0 && < 0.14,
     base >= 4.5 && < 4.9,
-    blaze-builder >= 0.3,
+    blaze-builder >= 0.4 && < 0.5,
     bytestring >= 0.10.6.0 && < 0.11,
     configurator,
     either >= 4.4.1 && < 4.5,
     errors >= 2.0.1 && < 2.1,
     heist >= 0.14.1.1 && < 0.15,
     HUnit >= 1.2,
-    HTTP >= 4000.2.8,
+    HTTP >= 4000.2.8 && < 4000.3,
     ghc-prim,
     lens >= 4.13 && < 4.14,
     map-syntax >= 0.2 && < 0.3,
     mime-mail >= 0.4.11 && < 0.5,
-    mtl >= 0.3.0.0,
+    mtl >= 2.2.1 && < 2.3,
     musicbrainz-email == 1.0.0.0,
     postgresql-simple >= 0.2,
     smallcheck >= 1.0.1,
@@ -105,10 +105,10 @@ test-suite tests
     test-framework >= 0.8,
     test-framework-hunit >= 0.3,
     test-framework-smallcheck >= 0.1,
-    text >= 0.11,
-    time >= 1.4,
-    transformers >= 0.2.2.0,
-    xmlhtml >= 0.2.1
+    text >= 1.2.1 && < 1.3,
+    time >= 1.5.0 && < 1.6,
+    transformers >= 0.4.2 && < 0.5,
+    xmlhtml >= 0.2.1 && < 0.3
   ghc-options: -Wall -fwarn-tabs -funbox-strict-fields -O2
                -fno-warn-orphans -fno-warn-unused-do-bind
                -Werror
