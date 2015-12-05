@@ -8,7 +8,7 @@ make
 sudo make install
 popd
 
-psql -U postgres -c "DROP DATABASE musicbrainz_email"
+psql -U postgres -c "CREATE USER musicbrainz NOCREATEDB NOCREATEUSER"
 psql -U postgres -c "CREATE DATABASE musicbrainz_email WITH OWNER musicbrainz"
 psql -U postgres musicbrainz_email -c "CREATE EXTENSION cube"
 psql -U postgres musicbrainz_email -c "CREATE EXTENSION \"uuid-ossp\""
