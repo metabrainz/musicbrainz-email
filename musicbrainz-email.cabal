@@ -22,7 +22,7 @@ library
     base >= 4.5 && < 4.9,
     ghc-prim,
     mime-mail >= 0.4.11 && < 0.5,
-    optparse-applicative >= 0.5,
+    optparse-applicative >= 0.12.0.0 && < 0.13,
     text >= 0.11
   ghc-options: -Wall -fwarn-tabs -funbox-strict-fields -O2
                -fno-warn-orphans -fno-warn-unused-do-bind
@@ -48,7 +48,7 @@ executable musicbrainz-emailer
     mtl >= 0.3.0.0,
     network,
     network-metrics >= 0.3.1,
-    optparse-applicative >= 0.5,
+    optparse-applicative >= 0.12.0.0 && < 0.13,
     text >= 0.11,
     time >= 1.4,
     transformers >= 0.2.2.0,
@@ -67,7 +67,7 @@ executable enqueue-mail
     mime-mail >= 0.4.11 && < 0.5,
     mtl >= 0.3.0.0,
     musicbrainz-email == 1.0.0.0,
-    optparse-applicative >= 0.5,
+    optparse-applicative >= 0.12.0.0 && < 0.13,
     postgresql-simple >= 0.2,
     transformers >= 0.2.2.0
   ghc-options: -Wall -fwarn-tabs -funbox-strict-fields -O2
