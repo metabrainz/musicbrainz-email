@@ -6,12 +6,12 @@ module Enqueue (Command(..), Options(..), RetryCommand(..), run) where
 import Control.Monad ((>=>), forM_, when, void)
 import Control.Monad.Trans (lift)
 import Data.List (nub)
-import Data.Traversable (traverse)
 
 
 --------------------------------------------------------------------------------
 import qualified Data.Aeson as Aeson
 import qualified Data.Aeson.Types as Aeson
+import qualified Data.Traversable as DT
 import qualified Database.PostgreSQL.Simple as PG
 import qualified Network.AMQP as AMQP
 import qualified Network.Mail.Mime as Mail
@@ -98,7 +98,7 @@ evaluateCommand (Retry commands) = do
   consumeMessage Unroutable sendChan msg = void $
     maybe
       (AMQP.publishMsg sendChan Email.failureExchange Email.invalidKey msg)
-      (void . traverse (Email.enqueueEmail sendChan))
+      (void . DT.traverse (Email.enqueueEmail sendChan))
       (Aeson.decode (AMQP.msgBody msg) >>= parseEmail)
 
    where
