@@ -96,10 +96,13 @@ enqueuePasswordResets pgConf rabbitConf = withTimeOut $
         withRabbitMq rabbitConf $ \(rabbitMq, _) -> do
           pg <- emptyPg
 
+          let editorName = Email.passwordResetEditor $ Email.emailTemplate expected
+
           PG.execute pg
-            [sql| INSERT INTO editor (name, password, email, email_confirm_date, last_login_date)
-                  VALUES (?, 'ignored', ?, '2010-01-01', '2010-01-01') |]
-            ( Email.passwordResetEditor $ Email.emailTemplate expected
+            [sql| INSERT INTO editor (name, password, ha1, email, email_confirm_date, last_login_date)
+                  VALUES (?, 'ignored', ?, ?, '2010-01-01', '2010-01-01') |]
+            ( editorName
+            , Text.concat [editorName, Text.pack ":musicbrainz.org:ignored"]
             , Mail.addressEmail $ Email.emailTo expected
             )
 
@@ -114,10 +117,13 @@ enqueuePasswordResets pgConf rabbitConf = withTimeOut $
         withRabbitMq rabbitConf $ \(rabbitMq, _) -> do
           pg <- emptyPg
 
+          let editorName = Email.passwordResetEditor $ Email.emailTemplate expected
+
           PG.execute pg
-            [sql| INSERT INTO editor (name, password, email, email_confirm_date, last_login_date)
-                  VALUES (?, 'ignored', ?, null, '2010-01-01') |]
-            ( Email.passwordResetEditor $ Email.emailTemplate expected
+            [sql| INSERT INTO editor (name, password, ha1, email, email_confirm_date, last_login_date)
+                  VALUES (?, 'ignored', ?, ?, null, '2010-01-01') |]
+            ( editorName
+            , Text.concat [editorName, Text.pack ":musicbrainz.org:ignored"]
             , Mail.addressEmail $ Email.emailTo expected
             )
 
@@ -127,10 +133,13 @@ enqueuePasswordResets pgConf rabbitConf = withTimeOut $
         withRabbitMq rabbitConf $ \(rabbitMq, _) -> do
           pg <- emptyPg
 
+          let editorName = Email.passwordResetEditor $ Email.emailTemplate expected
+
           PG.execute pg
-            [sql| INSERT INTO editor (name, password, email, email_confirm_date, last_login_date)
-                  VALUES (?, 'ignored', ?, now(), '2013-04-29') |]
-            ( Email.passwordResetEditor $ Email.emailTemplate expected
+            [sql| INSERT INTO editor (name, password, ha1, email, email_confirm_date, last_login_date)
+                  VALUES (?, 'ignored', ?, ?, now(), '2013-04-29') |]
+            ( editorName
+            , Text.concat [editorName, Text.pack ":musicbrainz.org:ignored"]
             , Mail.addressEmail $ Email.emailTo expected
             )
 
