@@ -1,21 +1,23 @@
 #!/bin/bash
-export PATH=/usr/local/postgres/bin:$PATH
+
+git clone --recursive git://github.com/metabrainz/musicbrainz-server
+pushd musicbrainz-server
+
+pushd postgresql-musicbrainz-collate
+make
+sudo make install
+popd
+
+psql -U postgres -c "DROP DATABASE musicbrainz_email"
+psql -U postgres -c "CREATE DATABASE musicbrainz_email WITH OWNER musicbrainz"
+psql -U postgres musicbrainz_email -c "CREATE EXTENSION cube"
+psql -U postgres musicbrainz_email -c "CREATE EXTENSION \"uuid-ossp\""
+psql -U postgres musicbrainz_email -c "CREATE EXTENSION musicbrainz_collate"
+psql -U musicbrainz musicbrainz_email -c "CREATE SCHEMA musicbrainz"
+psql -U musicbrainz musicbrainz_email < admin/sql/CreateTables.sql
+popd
+
 cabal update
-
-git clone git://github.com/metabrainz/musicbrainz-server
-
-if ! grep -q $(md5sum musicbrainz-server/admin/sql/CreateTables.sql) .schema-version
-then
-  psql -U postgres -c "DROP DATABASE musicbrainz_email"
-  psql -U postgres -c "CREATE DATABASE musicbrainz_email WITH OWNER musicbrainz"
-  psql -U postgres musicbrainz_email < /usr/local/postgres/share/contrib/cube.sql
-  psql -U postgres musicbrainz_email < /usr/local/postgres/share/contrib/uuid-ossp.sql
-  psql -U postgres musicbrainz_email < /usr/local/postgres/share/contrib/musicbrainz_collate.sql
-  psql -U musicbrainz musicbrainz_email -c "CREATE SCHEMA musicbrainz"
-  psql -U musicbrainz musicbrainz_email < musicbrainz-server/admin/sql/CreateTables.sql
-fi
-md5sum musicbrainz-server/admin/sql/CreateTables.sql > .schema-version
-
 cabal clean
 cabal install --enable-tests --only-dependencies --force-reinstalls
 cabal configure --enable-tests
@@ -37,4 +39,4 @@ rabbitmq {
 }
 EOF
 
-cabal test --test-option='--jxml=junit.xml'
+cabal test

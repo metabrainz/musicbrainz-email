@@ -11,12 +11,13 @@ addons:
   apt:
     packages:
     - postgresql-contrib-9.1
+    - libicu-dev
   postgresql: "9.1"
 
 script:
   - ./travis.sh
 
-sudo: false
+sudo: required
 
 cache:
   directories:
