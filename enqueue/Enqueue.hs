@@ -6,6 +6,7 @@ module Enqueue (Command(..), Options(..), RetryCommand(..), run) where
 import Control.Monad ((>=>), forM_, when, void)
 import Control.Monad.Trans (lift)
 import Data.List (nub)
+import Data.Traversable (traverse)
 
 
 --------------------------------------------------------------------------------
