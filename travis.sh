@@ -15,6 +15,9 @@ psql -U postgres musicbrainz_email -c "CREATE EXTENSION \"uuid-ossp\""
 psql -U postgres musicbrainz_email -c "CREATE EXTENSION musicbrainz_collate"
 psql -U musicbrainz musicbrainz_email -c "CREATE SCHEMA musicbrainz"
 psql -U musicbrainz musicbrainz_email < admin/sql/CreateTables.sql
+
+sudo rabbitmqctl add_vhost email
+sudo rabbitmqctl set_permissions -p /email guest '.*' '.*' '.*'
 popd
 
 cabal update
