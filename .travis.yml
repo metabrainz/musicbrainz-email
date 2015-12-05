@@ -5,6 +5,9 @@ ghc:
 services:
   - rabbitmq
 addons:
+  apt:
+    packages:
+    - postgresql-contrib-9.1
   postgresql: "9.1"
 script:
   - ./jenkins.sh
